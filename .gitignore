@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.db
+uploads/
+latest_result.json
+.env
+.vercel/
+node_modules/

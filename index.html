@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AmirBallBot — ניתוח כדורסל חכם</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0c0f;--bg2:#12151a;--bg3:#1a1e25;--bg4:#242830;
+  --accent:#00e5a0;--accent2:#00c98b;--accent-dim:rgba(0,229,160,.12);
+  --red:#ff4d6a;--yellow:#ffc544;--green:#00e5a0;
+  --text:#e8eaed;--text2:#9ca3af;--text3:#6b7280;
+  --border:#2a2e36;--radius:12px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden;direction:rtl}
+h1,h2,h3,h4{font-family:'Syne',sans-serif;font-weight:700}
+.mono{font-family:'DM Mono',monospace}
+
+/* Sidebar */
+.sidebar{width:72px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:8px;flex-shrink:0;z-index:10}
+.sidebar .logo{width:40px;height:40px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px;cursor:pointer}
+.sidebar .nav-btn{width:48px;height:48px;border-radius:12px;border:none;background:transparent;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;font-size:20px;position:relative}
+.sidebar .nav-btn:hover{background:var(--bg3);color:var(--text)}
+.sidebar .nav-btn.active{background:var(--accent-dim);color:var(--accent)}
+.sidebar .nav-btn .badge{position:absolute;top:6px;left:6px;width:8px;height:8px;background:var(--accent);border-radius:50%}
+.sidebar-bottom{margin-top:auto;display:flex;flex-direction:column;gap:8px;align-items:center}
+
+/* Main area */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:56px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;flex-shrink:0}
+.topbar h2{font-size:16px;font-weight:600}
+.topbar .status{margin-right:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)}
+.topbar .status .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.content{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.screen{display:none}
+.screen.active{display:flex;flex-direction:column;gap:20px}
+
+/* Cards */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-header h3{font-size:15px}
+
+/* Buttons */
+.btn{font-family:'DM Sans',sans-serif;font-weight:600;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;transition:.2s;font-size:14px;display:inline-flex;align-items:center;gap:8px}
+.btn-primary{background:var(--accent);color:#0a0c0f}
+.btn-primary:hover{background:var(--accent2);transform:translateY(-1px)}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm{padding:6px 14px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* Tags */
+.tags{display:flex;gap:8px;flex-wrap:wrap}
+.tag{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:.2s}
+.tag.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.tag:hover{border-color:var(--text3)}
+
+/* Input */
+input[type="text"],input[type="url"],textarea{font-family:'DM Sans',sans-serif;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;width:100%;outline:none;transition:.2s;direction:rtl}
+input:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:80px}
+
+/* Stat cards */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat-card{background:var(--bg3);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:4px}
+.stat-card .label{font-size:12px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px}
+.stat-card .value{font-size:28px;font-weight:800;font-family:'Syne',sans-serif}
+.stat-card .value.green{color:var(--green)}
+.stat-card .value.red{color:var(--red)}
+.stat-card .value.yellow{color:var(--yellow)}
+
+/* Upload area */
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:48px;text-align:center;cursor:pointer;transition:.2s;position:relative}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:var(--accent-dim)}
+.upload-zone svg{margin:0 auto 16px}
+.upload-zone h3{margin-bottom:8px}
+.upload-zone p{color:var(--text3);font-size:14px}
+.upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* Play list */
+.play-item{background:var(--bg3);border-radius:8px;padding:14px 16px;cursor:pointer;transition:.2s;border:1px solid transparent}
+.play-item:hover{border-color:var(--border)}
+.play-item .play-header{display:flex;align-items:center;gap:12px}
+.play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:50px}
+.play-item .play-type{font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.play-item .play-type.offense{background:rgba(0,229,160,.15);color:var(--green)}
+.play-item .play-type.defense{background:rgba(255,77,106,.15);color:var(--red)}
+.play-item .play-type.transition{background:rgba(255,197,68,.15);color:var(--yellow)}
+.play-item .play-label{flex:1;font-weight:500;font-size:14px}
+.play-item .play-note{display:none;margin-top:10px;font-size:13px;color:var(--text2);line-height:1.6;padding-top:10px;border-top:1px solid var(--border)}
+.play-item.expanded .play-note{display:block}
+.play-item .play-players{font-size:12px;color:var(--text3);font-family:'DM Mono',monospace}
+
+/* Insights */
+.insight-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.insight-item:last-child{border:none}
+.insight-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.insight-dot.good{background:var(--green)}
+.insight-dot.warn{background:var(--yellow)}
+.insight-dot.bad{background:var(--red)}
+.insight-title{font-weight:600;font-size:14px;margin-bottom:4px}
+.insight-body{font-size:13px;color:var(--text2);line-height:1.5}
+
+/* Shot chart bars */
+.chart-bar-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.chart-bar-label{font-size:13px;font-family:'DM Mono',monospace;min-width:100px;color:var(--text2);text-align:left}
+.chart-bar-track{flex:1;height:28px;background:var(--bg);border-radius:6px;overflow:hidden;position:relative}
+.chart-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:6px;transition:width .8s ease;display:flex;align-items:center;justify-content:flex-end;padding:0 10px}
+.chart-bar-val{font-size:12px;font-weight:700;color:#0a0c0f;font-family:'DM Mono',monospace}
+
+/* Chat */
+.chat-container{flex:1;display:flex;flex-direction:column;min-height:0}
+.chat-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-bottom:16px}
+.chat-msg{max-width:80%;padding:12px 16px;border-radius:12px;font-size:14px;line-height:1.6}
+.chat-msg.user{background:var(--accent-dim);color:var(--accent);align-self:flex-end;border-bottom-left:4px}
+.chat-msg.assistant{background:var(--bg3);align-self:flex-start;border-bottom-right:4px}
+.chat-input-row{display:flex;gap:10px;padding-top:12px;border-top:1px solid var(--border)}
+.chat-input-row input{flex:1}
+
+/* Roster table */
+.roster-table{width:100%;border-collapse:collapse}
+.roster-table th{text-align:right;font-size:12px;color:var(--text3);font-family:'DM Mono',monospace;padding:10px 12px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px}
+.roster-table td{padding:12px;border-bottom:1px solid var(--border);font-size:14px}
+.roster-table tr:hover td{background:var(--bg3)}
+.roster-table .player-name{font-weight:600;cursor:pointer;color:var(--accent)}
+.roster-table .jersey{font-family:'DM Mono',monospace;color:var(--text3)}
+
+/* Player profile */
+.profile-header{display:flex;gap:24px;align-items:center}
+.profile-avatar{width:80px;height:80px;border-radius:16px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:32px;font-family:'Syne',sans-serif;font-weight:800;color:var(--accent)}
+.profile-info h2{font-size:22px;margin-bottom:4px}
+.profile-info p{color:var(--text2);font-size:14px}
+.profile-tabs{display:flex;gap:4px;background:var(--bg3);border-radius:8px;padding:4px}
+.profile-tab{padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text3);transition:.2s;border:none;background:none}
+.profile-tab.active{background:var(--accent-dim);color:var(--accent)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Scouting */
+.matchup-card{display:flex;gap:16px;padding:16px;background:var(--bg3);border-radius:8px;align-items:center}
+.matchup-vs{font-size:20px;font-weight:800;font-family:'Syne',sans-serif;color:var(--accent)}
+
+/* Practice plan */
+.drill-item{padding:16px;background:var(--bg3);border-radius:8px;border-right:3px solid var(--accent)}
+.drill-item .drill-time{font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)}
+.drill-item .drill-name{font-weight:600;font-size:15px;margin:4px 0}
+.drill-item .drill-desc{font-size:13px;color:var(--text2);line-height:1.5}
+.drill-item .drill-players{margin-top:8px;font-size:12px;color:var(--text3)}
+
+/* Processing animation */
+.processing{text-align:center;padding:60px 20px}
+.processing .spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.processing .steps{display:flex;flex-direction:column;gap:10px;max-width:300px;margin:20px auto 0}
+.processing .step{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text3)}
+.processing .step.done{color:var(--accent)}
+.processing .step.active{color:var(--text)}
+.processing .step-icon{width:20px;text-align:center}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* Responsive */
+@media(max-width:768px){
+  .sidebar{width:56px}
+  .content{padding:16px}
+  .stats-row{grid-template-columns:1fr 1fr}
+  .profile-header{flex-direction:column;text-align:center}
+}
+
+.hidden{display:none!important}
+.fade-in{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="logo" title="AmirBallBot">🏀</div>
+  <button class="nav-btn active" data-screen="upload" title="העלאת סרטון">📤</button>
+  <button class="nav-btn" data-screen="analysis" title="ניתוח משחק">📊</button>
+  <button class="nav-btn" data-screen="chat" title="צ'אט עם המאמן">💬</button>
+  <button class="nav-btn" data-screen="roster" title="סגל">👥</button>
+  <button class="nav-btn" data-screen="player" title="פרופיל שחקן">⭐</button>
+  <button class="nav-btn" data-screen="scouting" title="דו״ח סקאוטינג">🔍</button>
+  <button class="nav-btn" data-screen="practice" title="תוכנית אימון">📋</button>
+  <div class="sidebar-bottom">
+    <button class="nav-btn" title="הגדרות">⚙️</button>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+  <div class="topbar">
+    <h2 id="screen-title">העלאת סרטון</h2>
+    <div class="status"><div class="dot"></div><span class="mono" style="font-size:12px">מחובר</span></div>
+  </div>
+
+  <div class="content">
+
+    <!-- 1. Upload Screen -->
+    <div class="screen active" id="screen-upload">
+      <div class="card">
+        <div class="card-header"><h3>העלאת סרטון משחק</h3></div>
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" id="file-input" accept="video/*,image/*">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          <h3>גרור סרטון לכאן</h3>
+          <p>או לחץ לבחירת קובץ — MP4, MOV, AVI עד 500MB</p>
+        </div>
+        <div style="margin-top:16px">
+          <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">או הכנס קישור YouTube</label>
+          <input type="url" id="youtube-url" placeholder="https://youtube.com/watch?v=..." style="direction:ltr;text-align:left">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>מיקוד ניתוח</h3></div>
+        <div class="tags" id="focus-tags">
+          <button class="tag active" data-tag="all">הכל</button>
+          <button class="tag" data-tag="offense">התקפה</button>
+          <button class="tag" data-tag="defense">הגנה</button>
+          <button class="tag" data-tag="pnr">פיק אנד רול</button>
+          <button class="tag" data-tag="transition">מעבר</button>
+          <button class="tag" data-tag="late">רגעי סיום</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>הקשר משחק</h3></div>
+        <textarea id="game-context" placeholder="לדוגמה: הפועל חיפה נגד מכבי רעננה, ליגה לאומית, סיבוב 12. אנחנו צריכים לנצח כדי להישאר בפלייאוף..."></textarea>
+      </div>
+
+      <button class="btn btn-primary" id="analyze-btn" style="align-self:flex-start;font-size:16px;padding:14px 32px">
+        🔬 התחל ניתוח
+      </button>
+      <div id="upload-status" style="font-size:13px;color:var(--text3)"></div>
+    </div>
+
+    <!-- 2. Analysis Screen -->
+    <div class="screen" id="screen-analysis">
+      <!-- Processing state -->
+      <div id="analysis-processing" class="processing hidden">
+        <div class="spinner"></div>
+        <h3>מנתח את המשחק...</h3>
+        <p style="color:var(--text3);font-size:14px;margin-top:8px">זה יכול לקחת 1-3 דקות</p>
+        <div class="steps">
+          <div class="step active" id="step-upload"><span class="step-icon">⏳</span> מעלה קבצים</div>
+          <div class="step" id="step-frames"><span class="step-icon">⏳</span> מחלץ פריימים</div>
+          <div class="step" id="step-ai"><span class="step-icon">⏳</span> Claude מנתח</div>
+          <div class="step" id="step-done"><span class="step-icon">⏳</span> מכין דו״ח</div>
+        </div>
+      </div>
+
+      <!-- Results state -->
+      <div id="analysis-results" class="hidden">
+        <div class="stats-row" id="stat-cards"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px">
+          <!-- Plays list -->
+          <div class="card">
+            <div class="card-header">
+              <h3>מהלכים שזוהו</h3>
+              <span class="mono" style="font-size:13px;color:var(--text3)" id="plays-count"></span>
+            </div>
+            <div id="plays-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+
+          <!-- Sidebar: insights + shot chart -->
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <div class="card">
+              <div class="card-header"><h3>תובנות מפתח</h3></div>
+              <div id="insights-list"></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h3>מפת זריקות</h3></div>
+              <div id="shot-chart"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="analysis-empty" style="text-align:center;padding:80px 20px;color:var(--text3)">
+        <p style="font-size:48px;margin-bottom:16px">📊</p>
+        <h3 style="color:var(--text);margin-bottom:8px">אין ניתוח עדיין</h3>
+        <p>העלה סרטון משחק כדי להתחיל</p>
+      </div>
+    </div>
+
+    <!-- 3. Chat Screen -->
+    <div class="screen" id="screen-chat">
+      <div class="card chat-container" style="flex:1;display:flex;flex-direction:column;min-height:0">
+        <div class="card-header"><h3>צ'אט עם המאמן AI</h3></div>
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-msg assistant">שלום מאמן! 👋 אני המנתח שלך. שאל אותי כל שאלה על המשחק — טקטיקה, שחקנים, מה לתקן באימון הבא. אני כאן.</div>
+        </div>
+        <div class="chat-input-row">
+          <button class="btn btn-primary" id="chat-send">שלח</button>
+          <input type="text" id="chat-input" placeholder="שאל שאלה על המשחק..." style="direction:rtl">
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Roster Screen -->
+    <div class="screen" id="screen-roster">
+      <div class="card">
+        <div class="card-header">
+          <h3>סגל הקבוצה</h3>
+          <button class="btn btn-secondary btn-sm">+ הוסף שחקן</button>
+        </div>
+        <table class="roster-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>שחקן</th>
+              <th>עמדה</th>
+              <th>נק׳/משחק</th>
+              <th>אסיסטים</th>
+              <th>ריבאונדים</th>
+              <th>דק׳/משחק</th>
+            </tr>
+          </thead>
+          <tbody id="roster-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5. Player Profile Screen -->
+    <div class="screen" id="screen-player">
+      <div class="card">
+        <div class="profile-header">
+          <div class="profile-avatar" id="player-avatar">7</div>
+          <div class="profile-info">
+            <h2 id="player-name">בחר שחקן</h2>
+            <p id="player-meta">לחץ על שחקן ברשימת הסגל</p>
+          </div>
+        </div>
+      </div>
+      <div class="profile-tabs" id="profile-tabs">
+        <button class="profile-tab active" data-tab="performance">ביצועים</button>
+        <button class="profile-tab" data-tab="physical">פיזי</button>
+        <button class="profile-tab" data-tab="ai-insights">תובנות AI</button>
+        <button class="profile-tab" data-tab="season-arc">מגמת עונה</button>
+      </div>
+      <div class="card">
+        <div class="tab-content active" id="tab-performance">
+          <div id="perf-stats"></div>
+        </div>
+        <div class="tab-content" id="tab-physical">
+          <div id="phys-stats"></div>
+        </div>
+        <div class="tab-content" id="tab-ai-insights">
+          <div id="ai-insights-content"></div>
+        </div>
+        <div class="tab-content" id="tab-season-arc">
+          <div id="season-arc-content"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Scouting Screen -->
+    <div class="screen" id="screen-scouting">
+      <div class="card">
+        <div class="card-header"><h3>דו״ח סקאוטינג</h3></div>
+        <div id="scouting-empty" style="text-align:center;padding:40px;color:var(--text3)">
+          <p style="font-size:36px;margin-bottom:12px">🔍</p>
+          <p>הרץ ניתוח משחק כדי לקבל דו״ח סקאוטינג על היריב</p>
+        </div>
+        <div id="scouting-content" class="hidden">
+          <div id="scouting-tendencies"></div>
+          <h4 style="margin:20px 0 12px">תוכנית משחק</h4>
+          <div id="scouting-gameplan"></div>
+          <h4 style="margin:20px 0 12px">מאצ׳אפים מרכזיים</h4>
+          <div id="scouting-matchups" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Practice Plan Screen -->
+    <div class="screen" id="screen-practice">
+      <div class="card">
+        <div class="card-header">
+          <h3>תוכנית אימון</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" id="generate-practice">🔄 צור תוכנית</button>
+            <button class="btn btn-primary btn-sm" id="save-notion">📝 שמור ל-Notion</button>
+          </div>
+        </div>
+        <div id="practice-empty" style="text-align:center;padding:40px;color:var(--text3)">
+          <p style="font-size:36px;margin-bottom:12px">📋</p>
+          <p>הרץ ניתוח משחק כדי לקבל תוכנית אימון מותאמת</p>
+        </div>
+        <div id="practice-drills" class="hidden" style="display:flex;flex-direction:column;gap:12px"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentAnalysis = null;
+let selectedPlayerId = null;
+
+// === Navigation ===
+document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const screen = btn.dataset.screen;
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + screen).classList.add('active');
+    const titles = {upload:'העלאת סרטון',analysis:'ניתוח משחק',chat:'צ\'אט מאמן',roster:'סגל',player:'פרופיל שחקן',scouting:'דו״ח סקאוטינג',practice:'תוכנית אימון'};
+    document.getElementById('screen-title').textContent = titles[screen] || '';
+  });
+});
+
+// === Focus tags ===
+document.querySelectorAll('#focus-tags .tag').forEach(tag => {
+  tag.addEventListener('click', () => {
+    document.querySelectorAll('#focus-tags .tag').forEach(t => t.classList.remove('active'));
+    tag.classList.add('active');
+  });
+});
+
+// === Upload zone drag & drop ===
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) {
+    fileInput.files = e.dataTransfer.files;
+    document.getElementById('upload-status').textContent = '📁 ' + e.dataTransfer.files[0].name;
+  }
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) {
+    document.getElementById('upload-status').textContent = '📁 ' + fileInput.files[0].name;
+  }
+});
+
+// === Analyze ===
+document.getElementById('analyze-btn').addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  const ytUrl = document.getElementById('youtube-url').value.trim();
+  const context = document.getElementById('game-context').value.trim();
+  const focus = document.querySelector('#focus-tags .tag.active')?.dataset.tag || 'all';
+
+  if (!file && !ytUrl) {
+    document.getElementById('upload-status').textContent = '⚠️ בחר סרטון או הכנס קישור YouTube';
+    return;
+  }
+
+  // Switch to analysis screen
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-screen="analysis"]').classList.add('active');
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-analysis').classList.add('active');
+  document.getElementById('screen-title').textContent = 'ניתוח משחק';
+
+  // Show processing
+  document.getElementById('analysis-processing').classList.remove('hidden');
+  document.getElementById('analysis-results').classList.add('hidden');
+  document.getElementById('analysis-empty').classList.add('hidden');
+
+  // Animate steps
+  const steps = ['step-upload','step-frames','step-ai','step-done'];
+  let currentStep = 0;
+  const stepInterval = setInterval(() => {
+    if (currentStep > 0) {
+      const prev = document.getElementById(steps[currentStep-1]);
+      prev.classList.remove('active'); prev.classList.add('done');
+      prev.querySelector('.step-icon').textContent = '✅';
+    }
+    if (currentStep < steps.length) {
+      const cur = document.getElementById(steps[currentStep]);
+      cur.classList.add('active');
+      cur.querySelector('.step-icon').textContent = '⏳';
+      currentStep++;
+    }
+  }, 2000);
+
+  try {
+    const formData = new FormData();
+    if (file) formData.append('file', file);
+    if (ytUrl) formData.append('youtube_url', ytUrl);
+    formData.append('context', context);
+    formData.append('focus', focus);
+
+    const res = await fetch('/api/analyze', { method: 'POST', body: formData });
+    const data = await res.json();
+    clearInterval(stepInterval);
+
+    if (data.error) throw new Error(data.error);
+    currentAnalysis = data;
+    renderAnalysis(data);
+  } catch (err) {
+    clearInterval(stepInterval);
+    document.getElementById('analysis-processing').classList.add('hidden');
+    document.getElementById('analysis-empty').classList.remove('hidden');
+    document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${err.message}</p>`;
+  }
+});
+
+// === Render analysis ===
+function renderAnalysis(data) {
+  document.getElementById('analysis-processing').classList.add('hidden');
+  document.getElementById('analysis-results').classList.remove('hidden');
+
+  // Stat cards
+  const plays = data.plays || [];
+  const insights = data.insights || [];
+  const offenseCount = plays.filter(p => p.type === 'offense' || p.type === 'Offense').length;
+  const defenseIssues = insights.filter(i => i.type === 'bad' || i.type === 'warn').length;
+  const highlights = insights.filter(i => i.type === 'good').length;
+
+  document.getElementById('stat-cards').innerHTML = `
+    <div class="stat-card"><span class="label">מהלכים שנותחו</span><span class="value green">${plays.length}</span></div>
+    <div class="stat-card"><span class="label">יעילות התקפית</span><span class="value">${offenseCount}</span></div>
+    <div class="stat-card"><span class="label">בעיות הגנתיות</span><span class="value red">${defenseIssues}</span></div>
+    <div class="stat-card"><span class="label">נקודות חוזק</span><span class="value green">${highlights}</span></div>
+  `;
+
+  // Plays list
+  document.getElementById('plays-count').textContent = plays.length + ' מהלכים';
+  document.getElementById('plays-list').innerHTML = plays.map((p, i) => {
+    const typeClass = (p.type||'').toLowerCase().includes('defense') ? 'defense' : (p.type||'').toLowerCase().includes('transition') ? 'transition' : 'offense';
+    const typeLabel = p.type === 'Offense' || p.type === 'offense' ? 'התקפה' : p.type === 'Defense' || p.type === 'defense' ? 'הגנה' : 'מעבר';
+    return `<div class="play-item" onclick="this.classList.toggle('expanded')">
+      <div class="play-header">
+        <span class="play-time">${p.time||''}</span>
+        <span class="play-type ${typeClass}">${typeLabel}</span>
+        <span class="play-label">${p.label||''}</span>
+        <span class="play-players">${(p.players||[]).join(', ')}</span>
+      </div>
+      <div class="play-note">${p.note||''}</div>
+    </div>`;
+  }).join('');
+
+  // Insights
+  document.getElementById('insights-list').innerHTML = insights.map(i => `
+    <div class="insight-item">
+      <div class="insight-dot ${i.type}"></div>
+      <div><div class="insight-title">${i.title||''}</div><div class="insight-body">${i.body||''}</div></div>
+    </div>
+  `).join('');
+
+  // Shot chart
+  const sc = data.shotChart || {};
+  const zones = [
+    {key:'paint',label:'צבע'},
+    {key:'midRange',label:'בינוני'},
+    {key:'corner3',label:'פינת 3'},
+    {key:'aboveBreak3',label:'3 מעל'},
+    {key:'pullUp',label:'פול-אפ'}
+  ];
+  document.getElementById('shot-chart').innerHTML = zones.map(z => {
+    const val = sc[z.key] || 0;
+    return `<div class="chart-bar-row">
+      <span class="chart-bar-label">${z.label}</span>
+      <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${val}%"><span class="chart-bar-val">${val}%</span></div></div>
+    </div>`;
+  }).join('');
+
+  // Load roster if players found
+  loadRoster();
+}
+
+// === Chat ===
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+document.getElementById('chat-send').addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+async function sendChat() {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+  chatMessages.innerHTML += `<div class="chat-msg user">${escapeHtml(msg)}</div>`;
+  chatInput.value = '';
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  const assistantMsg = document.createElement('div');
+  assistantMsg.className = 'chat-msg assistant';
+  assistantMsg.textContent = '...';
+  chatMessages.appendChild(assistantMsg);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: msg, context: currentAnalysis })
+    });
+
+    if (res.headers.get('content-type')?.includes('text/event-stream')) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const d = line.slice(6);
+            if (d === '[DONE]') break;
+            try { text += JSON.parse(d).text || ''; } catch {}
+          }
+        }
+        assistantMsg.textContent = text;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    } else {
+      const data = await res.json();
+      assistantMsg.textContent = data.response || data.error || 'שגיאה';
+    }
+  } catch (err) {
+    assistantMsg.textContent = 'שגיאה: ' + err.message;
+  }
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// === Roster ===
+async function loadRoster() {
+  try {
+    const res = await fetch('/api/players');
+    const players = await res.json();
+    const tbody = document.getElementById('roster-body');
+    tbody.innerHTML = players.map(p => `
+      <tr>
+        <td class="jersey">${p.jersey}</td>
+        <td class="player-name" onclick="loadPlayer(${p.id})">${p.name}</td>
+        <td>${p.position}</td>
+        <td>${p.ppg || '-'}</td>
+        <td>${p.apg || '-'}</td>
+        <td>${p.rpg || '-'}</td>
+        <td>${p.mpg || '-'}</td>
+      </tr>
+    `).join('');
+  } catch {}
+}
+
+// === Player Profile ===
+async function loadPlayer(id) {
+  selectedPlayerId = id;
+  // Navigate to player screen
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-screen="player"]').classList.add('active');
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-player').classList.add('active');
+  document.getElementById('screen-title').textContent = 'פרופיל שחקן';
+
+  try {
+    const res = await fetch('/api/players/' + id);
+    const p = await res.json();
+    document.getElementById('player-avatar').textContent = p.jersey || '?';
+    document.getElementById('player-name').textContent = p.name || '';
+    document.getElementById('player-meta').textContent = `${p.position || ''} | #${p.jersey || ''}`;
+
+    document.getElementById('perf-stats').innerHTML = `
+      <div class="stats-row">
+        <div class="stat-card"><span class="label">נקודות/משחק</span><span class="value green">${p.ppg||'-'}</span></div>
+        <div class="stat-card"><span class="label">אסיסטים/משחק</span><span class="value">${p.apg||'-'}</span></div>
+        <div class="stat-card"><span class="label">ריבאונדים/משחק</span><span class="value">${p.rpg||'-'}</span></div>
+        <div class="stat-card"><span class="label">זריקות %</span><span class="value">${p.fg_pct||'-'}%</span></div>
+      </div>`;
+
+    document.getElementById('phys-stats').innerHTML = `
+      <div class="stats-row">
+        <div class="stat-card"><span class="label">דקות/משחק</span><span class="value">${p.mpg||'-'}</span></div>
+        <div class="stat-card"><span class="label">רמת עייפות</span><span class="value yellow">${p.fatigue||'בינוני'}</span></div>
+      </div>`;
+
+    document.getElementById('ai-insights-content').innerHTML = (p.ai_insights||[]).map(i =>
+      `<div class="insight-item"><div class="insight-dot ${i.type||'good'}"></div><div><div class="insight-title">${i.title}</div><div class="insight-body">${i.body}</div></div></div>`
+    ).join('') || '<p style="color:var(--text3)">אין תובנות עדיין — הרץ ניתוח משחק</p>';
+
+    document.getElementById('season-arc-content').innerHTML = (p.season_arc||[]).map(m =>
+      `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span>${m.month}</span><span class="mono">${m.ppg} נק׳</span><span class="mono">${m.fg_pct}%</span></div>`
+    ).join('') || '<p style="color:var(--text3)">אין נתונים עונתיים עדיין</p>';
+  } catch {}
+}
+
+// Profile tabs
+document.querySelectorAll('.profile-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// === Practice plan - Save to Notion ===
+document.getElementById('save-notion')?.addEventListener('click', async () => {
+  if (!currentAnalysis) return alert('אין ניתוח לשמירה');
+  try {
+    const res = await fetch('/api/save-notion', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ analysis: currentAnalysis })
+    });
+    const data = await res.json();
+    alert(data.success ? 'נשמר בהצלחה ב-Notion!' : 'שגיאה: ' + data.error);
+  } catch (err) { alert('שגיאה: ' + err.message); }
+});
+
+// === Generate practice plan ===
+document.getElementById('generate-practice')?.addEventListener('click', async () => {
+  if (!currentAnalysis) return alert('הרץ ניתוח משחק קודם');
+  document.getElementById('practice-empty').classList.add('hidden');
+  const drillsDiv = document.getElementById('practice-drills');
+  drillsDiv.classList.remove('hidden');
+  drillsDiv.innerHTML = '<div class="processing"><div class="spinner"></div><p>מכין תוכנית אימון...</p></div>';
+
+  try {
+    const res = await fetch(API + '/practice-plan', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ analysis: currentAnalysis })
+    });
+    const data = await res.json();
+    drillsDiv.innerHTML = (data.drills||[]).map(d => `
+      <div class="drill-item">
+        <div class="drill-time">${d.time||''}</div>
+        <div class="drill-name">${d.name||''}</div>
+        <div class="drill-desc">${d.description||''}</div>
+        <div class="drill-players">${d.players||''}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    drillsDiv.innerHTML = `<p style="color:var(--red)">שגיאה: ${err.message}</p>`;
+  }
+});
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Initial roster load attempt
+loadRoster();
+</script>
+</body>
+</html>
