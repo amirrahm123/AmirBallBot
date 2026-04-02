@@ -55,15 +55,18 @@ router.post('/fetch', async (req: Request, res: Response) => {
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 4096,
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+      } as any],
       messages: [{
         role: 'user',
-        content: `What is the current roster of ${teamName} basketball team?
-Return JSON only, no other text: { "players": [{"number": 0, "name": "שם השחקן", "position": "עמדה"}] }
+        content: `Search the web for the current 2024-2025 roster of ${teamName} basketball team.
+After searching, return JSON only, no other text: { "players": [{"number": 0, "name": "שם השחקן", "position": "עמדה"}] }
 Use Hebrew for position names only from this list: פוינט גארד, שוטינג גארד, סמול פורוורד, פאואר פורוורד, סנטר
 Player names should be in Hebrew if it's an Israeli team, otherwise in the original language.
 number must be an integer (jersey number).
-If you don't know the exact current roster, give your best knowledge.
 Return 10-15 players.`
       }],
     });
