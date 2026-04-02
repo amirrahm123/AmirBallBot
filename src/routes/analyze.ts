@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { analyzeVideo, analyzeYouTube, analyzeImage } from '../analyzer';
+import { analyzeVideo, analyzeYouTubeCloud, analyzeImage } from '../analyzer';
 import { Game } from '../database';
 
 const router = Router();
@@ -35,7 +35,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       try { fs.unlinkSync(req.file.path); } catch {}
 
     } else if (youtubeUrl) {
-      result = await analyzeYouTube(youtubeUrl, context, focus);
+      result = await analyzeYouTubeCloud(youtubeUrl, context, focus);
     } else {
       res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
       return;
