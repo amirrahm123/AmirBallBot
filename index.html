@@ -519,8 +519,10 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   document.getElementById('analysis-results').classList.add('hidden');
   document.getElementById('analysis-empty').classList.add('hidden');
 
-  // Animate steps
+  // Animate steps — only first 3 auto-advance; step 4 waits for API
   const steps = ['step-upload','step-frames','step-ai','step-done'];
+  // Reset all steps
+  steps.forEach(id => { const el = document.getElementById(id); el.classList.remove('active','done'); el.querySelector('.step-icon').textContent = '⏳'; });
   let currentStep = 0;
   const stepInterval = setInterval(() => {
     if (currentStep > 0) {
@@ -528,13 +530,27 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       prev.classList.remove('active'); prev.classList.add('done');
       prev.querySelector('.step-icon').textContent = '✅';
     }
-    if (currentStep < steps.length) {
+    if (currentStep < steps.length - 1) { // stop before last step
       const cur = document.getElementById(steps[currentStep]);
       cur.classList.add('active');
       cur.querySelector('.step-icon').textContent = '⏳';
       currentStep++;
+    } else {
+      clearInterval(stepInterval); // keep last step spinning
+      const last = document.getElementById(steps[steps.length - 1]);
+      last.classList.add('active');
+      last.querySelector('.step-icon').textContent = '⏳';
     }
   }, 2000);
+
+  function finishSteps() {
+    clearInterval(stepInterval);
+    steps.forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.remove('active'); el.classList.add('done');
+      el.querySelector('.step-icon').textContent = '✅';
+    });
+  }
 
   try {
     // Store the video URL for the player
@@ -546,18 +562,33 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     formData.append('context', context);
     formData.append('focus', focus);
 
-    const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData });
+    // 5 minute timeout to prevent hanging forever
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
+    const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'שגיאת שרת: ' + res.status);
+    }
+
     const data = await res.json();
-    clearInterval(stepInterval);
 
     if (data.error) throw new Error(data.error);
+
+    // Mark all steps done, brief pause, then show results
+    finishSteps();
     currentAnalysis = data;
+    await new Promise(r => setTimeout(r, 600));
     renderAnalysis(data);
   } catch (err) {
-    clearInterval(stepInterval);
+    finishSteps();
     document.getElementById('analysis-processing').classList.add('hidden');
     document.getElementById('analysis-empty').classList.remove('hidden');
-    document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${err.message}</p>`;
+    const msg = err.name === 'AbortError' ? 'הניתוח ארך יותר מדי זמן — נסה שוב' : (err.message || 'שגיאה בניתוח');
+    document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
   }
 });
 
