@@ -123,10 +123,10 @@ export async function connectDB(): Promise<void> {
     return;
   }
   try {
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
     console.log('✅ MongoDB connected');
   } catch (err) {
     console.error('❌ שגיאה בחיבור ל-MongoDB:', err);
-    throw err;
+    console.warn('⚠️ Server will continue without database');
   }
 }
