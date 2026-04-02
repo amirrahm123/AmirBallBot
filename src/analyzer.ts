@@ -213,21 +213,235 @@ export function downloadYouTube(url: string): string {
   return videoPath;
 }
 
-/** Extract 1 frame every 5 seconds using local ffmpeg */
-export function extractFrames(videoPath: string): string[] {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-frames-'));
-  console.log(`\n📸 [2/4] Extracting frames (1 every 5s)...`);
+// ============================================================
+// FRAME EXTRACTION HELPERS
+// ============================================================
 
-  console.log(`   ffprobe: getting duration...`);
+const LONG_VIDEO_THRESHOLD = 30 * 60; // 30 minutes in seconds
+
+/** Get video duration in seconds using ffprobe */
+function getVideoDuration(videoPath: string): number {
   const durationStr = execFileSync(FFPROBE, [
     '-v', 'error', '-show_entries', 'format=duration',
     '-of', 'default=noprint_wrappers=1:nokey=1', videoPath
   ], { encoding: 'utf-8', timeout: 30000 }).trim();
-  const duration = parseFloat(durationStr);
-  console.log(`   📹 Video duration: ${duration.toFixed(1)}s`);
+  return parseFloat(durationStr);
+}
+
+/** Extract frames at specific timestamps (in seconds) */
+function extractFramesAtSeconds(videoPath: string, timestamps: number[]): string[] {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-ts-frames-'));
+  const frames: string[] = [];
+
+  for (let i = 0; i < timestamps.length; i++) {
+    const ts = timestamps[i];
+    const outPath = path.join(tmpDir, `frame_${String(i).padStart(4, '0')}.jpg`);
+    try {
+      execFileSync(FFMPEG, [
+        '-ss', String(ts), '-i', videoPath,
+        '-frames:v', '1', '-q:v', '2', outPath, '-y'
+      ], { stdio: 'pipe', timeout: 30000 });
+      if (fs.existsSync(outPath)) frames.push(outPath);
+    } catch {
+      console.log(`   ⚠️ Failed to extract frame at ${ts}s`);
+    }
+  }
+
+  return frames;
+}
+
+/** Parse "MM:SS" or "HH:MM:SS" to seconds */
+function timestampToSeconds(ts: string): number | null {
+  const parts = ts.trim().split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
+/** Format seconds as "MM:SS" */
+function formatTimestamp(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+interface QuarterInfo {
+  quarter: number;
+  videoTimestamp: string;
+  seconds: number;
+}
+
+/** Step 1: Quick scan — detect quarter start times using Claude Vision */
+async function detectQuarters(videoPath: string, duration: number): Promise<QuarterInfo[] | null> {
+  console.log(`\n🔍 Quarter detection: scanning ${formatTimestamp(duration)} video...`);
+
+  // Extract 1 frame every 60 seconds
+  const scanTimestamps: number[] = [];
+  for (let t = 0; t < duration; t += 60) {
+    scanTimestamps.push(t);
+  }
+  console.log(`   📸 Extracting ${scanTimestamps.length} scan frames (1 per minute)...`);
+
+  const scanFrames = extractFramesAtSeconds(videoPath, scanTimestamps);
+  if (scanFrames.length === 0) {
+    console.log('   ❌ No scan frames extracted');
+    return null;
+  }
+  console.log(`   ✅ Got ${scanFrames.length} scan frames`);
+
+  // Send to Claude for quarter detection
+  const client = getClient();
+  const imageBlocks: Anthropic.ImageBlockParam[] = scanFrames.map((framePath, i) => {
+    const data = fs.readFileSync(framePath).toString('base64');
+    return {
+      type: 'image' as const,
+      source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
+    };
+  });
+
+  // Build timestamp labels so Claude knows which frame is which
+  const frameLabels = scanTimestamps.slice(0, scanFrames.length)
+    .map((ts, i) => `Frame ${i + 1}: ${formatTimestamp(ts)}`).join('\n');
+
+  const textBlock: Anthropic.TextBlockParam = {
+    type: 'text',
+    text: `Look at these frames from a basketball game broadcast.
+Each frame is taken at the following video timestamps:
+${frameLabels}
+
+Find the timestamps in the video where each quarter starts (Q1, Q2, Q3, Q4).
+Look for the scoreboard which shows quarter number and game clock.
+A new quarter starts when the game clock resets to the beginning (10:00 or 12:00).
+Q1 typically starts near the beginning of the video.
+
+Return JSON only, no other text:
+{ "quarters": [{"quarter": 1, "videoTimestamp": "00:08:30"}, {"quarter": 2, "videoTimestamp": "00:22:15"}, {"quarter": 3, "videoTimestamp": "00:45:00"}, {"quarter": 4, "videoTimestamp": "01:05:30"}] }
+
+videoTimestamp must be in MM:SS or HH:MM:SS format referring to the video time, not the game clock.
+Return all quarters you can identify. If you can't find a quarter, skip it.`,
+  };
+
+  console.log(`   🤖 Sending ${scanFrames.length} frames to Claude for quarter detection...`);
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
+    });
+
+    const text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map((block) => block.text)
+      .join('');
+
+    console.log(`   📊 Quarter detection usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
+    console.log(`   📝 Raw response: ${text.substring(0, 300)}`);
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.log('   ⚠️ No JSON found in quarter detection response');
+      return null;
+    }
+
+    const data = JSON.parse(jsonMatch[0]);
+    const quarters: QuarterInfo[] = (data.quarters || [])
+      .map((q: any) => {
+        const secs = timestampToSeconds(q.videoTimestamp);
+        if (secs == null) return null;
+        return { quarter: q.quarter, videoTimestamp: q.videoTimestamp, seconds: secs };
+      })
+      .filter((q: QuarterInfo | null): q is QuarterInfo => q !== null)
+      .sort((a: QuarterInfo, b: QuarterInfo) => a.quarter - b.quarter);
+
+    if (quarters.length === 0) {
+      console.log('   ⚠️ No valid quarters detected');
+      return null;
+    }
+
+    console.log(`   ✅ Detected ${quarters.length} quarters:`);
+    quarters.forEach(q => console.log(`      Q${q.quarter}: ${q.videoTimestamp} (${q.seconds}s)`));
+
+    // Cleanup scan frames
+    scanFrames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+
+    return quarters;
+  } catch (err: any) {
+    console.log(`   ⚠️ Quarter detection failed: ${err.message}`);
+    scanFrames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+    return null;
+  }
+}
+
+/** Step 2: Smart extraction — 5 frames per quarter using detected boundaries */
+function extractSmartFrames(videoPath: string, quarters: QuarterInfo[], duration: number): string[] {
+  console.log(`\n📸 Smart frame extraction: 5 frames per quarter...`);
+  const FRAMES_PER_QUARTER = 5;
+  const timestamps: number[] = [];
+
+  for (let i = 0; i < quarters.length; i++) {
+    const start = quarters[i].seconds;
+    const end = (i + 1 < quarters.length) ? quarters[i + 1].seconds : duration;
+    const quarterDuration = end - start;
+    const step = quarterDuration / (FRAMES_PER_QUARTER + 1);
+
+    for (let j = 1; j <= FRAMES_PER_QUARTER; j++) {
+      const ts = Math.floor(start + step * j);
+      timestamps.push(Math.min(ts, duration - 1));
+    }
+    console.log(`   Q${quarters[i].quarter}: ${formatTimestamp(start)} → ${formatTimestamp(end)} (${FRAMES_PER_QUARTER} frames, every ${formatTimestamp(step)})`);
+  }
+
+  console.log(`   📸 Extracting ${timestamps.length} frames at smart positions...`);
+  return extractFramesAtSeconds(videoPath, timestamps);
+}
+
+/** Fallback: equal time splits for 20 frames */
+function extractEqualSplitFrames(videoPath: string, duration: number): string[] {
+  console.log(`\n📸 Fallback: extracting 20 frames at equal intervals...`);
+  const TOTAL_FRAMES = 20;
+  const step = duration / (TOTAL_FRAMES + 1);
+  const timestamps: number[] = [];
+  for (let i = 1; i <= TOTAL_FRAMES; i++) {
+    timestamps.push(Math.floor(step * i));
+  }
+  return extractFramesAtSeconds(videoPath, timestamps);
+}
+
+/** Extract frames — smart quarter-based for long videos, simple for short */
+async function extractFramesSmart(videoPath: string): Promise<string[]> {
+  const duration = getVideoDuration(videoPath);
+  console.log(`   📹 Video duration: ${formatTimestamp(duration)} (${duration.toFixed(1)}s)`);
+
+  if (duration > LONG_VIDEO_THRESHOLD) {
+    console.log(`   📹 Long video detected (>${LONG_VIDEO_THRESHOLD / 60}min) — using quarter detection`);
+
+    const quarters = await detectQuarters(videoPath, duration);
+    if (quarters && quarters.length >= 2) {
+      const frames = extractSmartFrames(videoPath, quarters, duration);
+      if (frames.length > 0) {
+        console.log(`   ✅ Smart extraction: ${frames.length} frames across ${quarters.length} quarters`);
+        return frames;
+      }
+    }
+
+    // Fallback to equal splits
+    console.log('   ⚠️ Quarter detection failed or insufficient — falling back to equal splits');
+    const frames = extractEqualSplitFrames(videoPath, duration);
+    if (frames.length > 0) return frames;
+  }
+
+  // Short video: original logic — 1 frame every 5 seconds, cap at 20
+  return extractFramesSimple(videoPath, duration);
+}
+
+/** Original simple extraction for short videos */
+function extractFramesSimple(videoPath: string, duration: number): string[] {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-frames-'));
+  console.log(`\n📸 Simple extraction (1 frame every 5s)...`);
 
   const pattern = path.join(tmpDir, 'frame_%04d.jpg');
-  console.log(`   ffmpeg: extracting frames fps=1/5 ...`);
   execFileSync(FFMPEG, [
     '-i', videoPath, '-vf', 'fps=1/5', '-q:v', '2', pattern, '-y'
   ], { stdio: 'inherit', timeout: 600000 });
@@ -249,6 +463,13 @@ export function extractFrames(videoPath: string): string[] {
   }
 
   return frames;
+}
+
+/** Legacy wrapper — kept for backward compat */
+export function extractFrames(videoPath: string): string[] {
+  const duration = getVideoDuration(videoPath);
+  console.log(`   📹 Video duration: ${duration.toFixed(1)}s`);
+  return extractFramesSimple(videoPath, duration);
 }
 
 /** Send frame files to Claude Vision API */
@@ -344,12 +565,12 @@ export async function analyzeGoogleDrive(url: string, context: string, focus: st
   console.log(`   Context: ${context || '(none)'}`);
 
   const videoPath = downloadGoogleDrive(url);
-  const frames = extractFrames(videoPath);
+  const frames = await extractFramesSmart(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
   const result = await analyzeFrames(frames, context, focus, roster);
 
-  console.log('\n🧹 [4/4] Cleaning up temp files...');
+  console.log('\n🧹 Cleaning up temp files...');
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   try { fs.unlinkSync(videoPath); } catch {}
   console.log('   ✅ Cleanup done');
@@ -370,12 +591,12 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   console.log(`   Context: ${context || '(none)'}`);
 
   const videoPath = downloadYouTube(url);
-  const frames = extractFrames(videoPath);
+  const frames = await extractFramesSmart(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
   const result = await analyzeFrames(frames, context, focus, roster);
 
-  console.log('\n🧹 [4/4] Cleaning up temp files...');
+  console.log('\n🧹 Cleaning up temp files...');
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   try { fs.unlinkSync(videoPath); } catch {}
   console.log('   ✅ Cleanup done');
@@ -387,7 +608,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 /** Analyze uploaded video file (local only) */
 export async function analyzeVideo(videoPath: string, context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
-  const frames = extractFrames(videoPath);
+  const frames = await extractFramesSmart(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
   const result = await analyzeFrames(frames, context, focus, roster);
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
