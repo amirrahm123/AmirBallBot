@@ -14,13 +14,27 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   ? path.join(BIN_DIR, 'ffprobe.exe')
   : 'ffprobe';
 
-const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי ישראלי. נתח את התמונות האלה ממשחק כדורסל והחזר JSON בלבד:
+const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי ישראלי ברמה הגבוהה ביותר. נתח את התמונות האלה ממשחק כדורסל והחזר JSON בלבד:
 {
   "game": "תיאור קצר של המשחק",
-  "plays": [{ "time": "00:00", "type": "Offense|Defense|Transition", "label": "שם המהלך", "note": "הערה", "players": ["#5", "#10"] }],
+  "plays": [{ "time": "00:00", "type": "Offense|Defense|Transition", "label": "שם המהלך", "note": "הערה מפורטת למאמן", "players": ["#5", "#10"] }],
   "insights": [{ "type": "good|warn|bad", "title": "כותרת", "body": "פירוט" }],
   "shotChart": { "paint": 45, "midRange": 30, "corner3": 35, "aboveBreak3": 28, "pullUp": 20 }
 }
+
+חשוב מאוד — עבור סרטון משחק מלא, חובה לזהות לפחות 25-35 מהלכים טקטיים.
+נתח כל רגע משמעותי:
+- כל פיק אנד רול (ביצוע טוב וגרוע)
+- כל כשל הגנתי ומיתוג שחקן
+- כל מעבר מהיר (Transition) — התקפי והגנתי
+- כל משחק אחד על אחד (Isolation)
+- כל משחק מקו הצד/קו הקצה
+- כל טיימאוט ושינוי מומנטום ברבעים
+- טעויות אישיות של שחקנים והיילייטים
+- החלטות אימון הנראות על המסך
+- ריבאונדים, מסירות מפתח, חסימות
+
+אל תסכם! תן הערה נפרדת ומפורטת לכל מהלך בודד.
 כל הטקסט בעברית.`;
 
 export interface AnalysisResult {
@@ -153,7 +167,7 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: buildSystemPrompt(roster),
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
   });
@@ -496,7 +510,7 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: buildSystemPrompt(roster),
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
   });
