@@ -175,6 +175,13 @@ textarea{resize:vertical;min-height:80px}
   .profile-header{flex-direction:column;text-align:center}
 }
 
+/* Video player */
+.video-player-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.video-player-card iframe{display:block;width:100%;height:450px;border:none}
+.video-player-card .video-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--bg3)}
+.video-player-card .video-bar span{font-size:13px;color:var(--text2)}
+.video-timestamp-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--accent);color:var(--accent);padding:10px 20px;border-radius:8px;font-size:14px;font-family:'DM Mono',monospace;z-index:100;animation:fadeIn .3s ease;pointer-events:none}
+
 .hidden{display:none!important}
 .fade-in{animation:fadeIn .3s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -286,6 +293,15 @@ textarea{resize:vertical;min-height:80px}
 
       <!-- Results state -->
       <div id="analysis-results" class="hidden">
+        <!-- Video Player -->
+        <div id="video-player-wrap" class="video-player-card hidden">
+          <iframe id="video-player" src="" allow="autoplay" allowfullscreen></iframe>
+          <div class="video-bar">
+            <span id="video-source-label">🎬 סרטון משחק</span>
+            <span id="video-ts-hint" class="hidden" style="color:var(--accent)">💡 לחץ על מהלך כדי לקפוץ לזמן בסרטון</span>
+          </div>
+        </div>
+
         <div class="stats-row" id="stat-cards"></div>
 
         <div style="display:grid;grid-template-columns:1fr 340px;gap:20px">
@@ -435,6 +451,9 @@ textarea{resize:vertical;min-height:80px}
 const API = 'https://amirballbot-production.up.railway.app';
 let currentAnalysis = null;
 let selectedPlayerId = null;
+let currentVideoUrl = null;   // original URL submitted for analysis
+let currentVideoType = null;  // 'youtube' | 'gdrive' | null
+let currentVideoEmbedId = null; // VIDEO_ID or FILE_ID
 
 // === Navigation ===
 document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
@@ -518,6 +537,9 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   }, 2000);
 
   try {
+    // Store the video URL for the player
+    currentVideoUrl = ytUrl || null;
+
     const formData = new FormData();
     if (file) formData.append('file', file);
     if (ytUrl) formData.append('youtube_url', ytUrl);
@@ -539,10 +561,75 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   }
 });
 
+// === Video helpers ===
+function parseVideoUrl(url) {
+  if (!url) return null;
+  // YouTube
+  let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/);
+  if (m) return { type: 'youtube', id: m[1] };
+  // Google Drive
+  m = url.match(/drive\.google\.com\/file\/d\/([\w-]+)/);
+  if (m) return { type: 'gdrive', id: m[1] };
+  return null;
+}
+
+function getEmbedUrl(type, id, startSeconds) {
+  if (type === 'youtube') {
+    let src = 'https://www.youtube.com/embed/' + id;
+    if (startSeconds != null) src += '?start=' + startSeconds + '&autoplay=1';
+    return src;
+  }
+  if (type === 'gdrive') return 'https://drive.google.com/file/d/' + id + '/preview';
+  return '';
+}
+
+function setupVideoPlayer(url) {
+  const info = parseVideoUrl(url);
+  const wrap = document.getElementById('video-player-wrap');
+  if (!info) { wrap.classList.add('hidden'); currentVideoType = null; currentVideoEmbedId = null; return; }
+  currentVideoType = info.type;
+  currentVideoEmbedId = info.id;
+  document.getElementById('video-player').src = getEmbedUrl(info.type, info.id);
+  document.getElementById('video-source-label').textContent = info.type === 'youtube' ? '🎬 YouTube' : '🎬 Google Drive';
+  const hint = document.getElementById('video-ts-hint');
+  if (info.type === 'youtube') { hint.classList.remove('hidden'); hint.textContent = '💡 לחץ על מהלך כדי לקפוץ לזמן בסרטון'; }
+  else { hint.classList.remove('hidden'); hint.textContent = '💡 לחץ על מהלך לראות את הזמן בסרטון'; }
+  wrap.classList.remove('hidden');
+}
+
+function timeToSeconds(timeStr) {
+  if (!timeStr) return null;
+  const parts = timeStr.trim().split(':').map(Number);
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0] * 60 + parts[1];
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
+function seekVideo(timeStr) {
+  if (!currentVideoType || !currentVideoEmbedId) return;
+  const secs = timeToSeconds(timeStr);
+  if (secs == null) return;
+  if (currentVideoType === 'youtube') {
+    document.getElementById('video-player').src = getEmbedUrl('youtube', currentVideoEmbedId, secs);
+    document.getElementById('video-player-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    // Google Drive doesn't support timestamp seeking — show toast
+    const toast = document.createElement('div');
+    toast.className = 'video-timestamp-toast';
+    toast.textContent = 'עבור לדקה ' + timeStr + ' בסרטון ⏱️';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+    document.getElementById('video-player-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 // === Render analysis ===
 function renderAnalysis(data) {
   document.getElementById('analysis-processing').classList.add('hidden');
   document.getElementById('analysis-results').classList.remove('hidden');
+
+  // Video player
+  setupVideoPlayer(currentVideoUrl);
 
   // Stat cards
   const plays = data.plays || [];
@@ -563,9 +650,10 @@ function renderAnalysis(data) {
   document.getElementById('plays-list').innerHTML = plays.map((p, i) => {
     const typeClass = (p.type||'').toLowerCase().includes('defense') ? 'defense' : (p.type||'').toLowerCase().includes('transition') ? 'transition' : 'offense';
     const typeLabel = p.type === 'Offense' || p.type === 'offense' ? 'התקפה' : p.type === 'Defense' || p.type === 'defense' ? 'הגנה' : 'מעבר';
-    return `<div class="play-item" onclick="this.classList.toggle('expanded')">
+    const time = p.time||'';
+    return `<div class="play-item" onclick="this.classList.toggle('expanded');seekVideo('${time}')">
       <div class="play-header">
-        <span class="play-time">${p.time||''}</span>
+        <span class="play-time">${time}</span>
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
         <span class="play-players">${(p.players||[]).join(', ')}</span>
