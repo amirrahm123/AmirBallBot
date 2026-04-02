@@ -171,7 +171,8 @@ export function downloadYouTube(url: string): string {
   console.log(`\n📥 [1/4] Downloading YouTube video: ${url}`);
 
   const cleanUrl = url.split('&t=')[0];
-  const cmd = `yt-dlp -f "best[height<=720]" -o "${outPath}" "${cleanUrl}"`;
+  const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
+  const cmd = `${ytdlp} -o "${outPath}" "${cleanUrl}"`;
   console.log(`   CMD: ${cmd}`);
 
   execSync(cmd, { stdio: 'inherit', timeout: 300000 });
