@@ -167,12 +167,12 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
 /** Download YouTube video using yt-dlp */
 export function downloadYouTube(url: string): string {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-yt-'));
-  const outPath = path.join(tmpDir, 'video.mp4');
+  const outTemplate = path.join(tmpDir, 'video.%(ext)s');
   console.log(`\n📥 [1/4] Downloading YouTube video: ${url}`);
 
   const cleanUrl = url.split('&t=')[0];
   const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
-  const cmd = `${ytdlp} --no-check-certificates --no-playlist --extractor-retries 3 --socket-timeout 30 -o "${outPath}" "${cleanUrl}"`;
+  const cmd = `${ytdlp} --no-check-certificates --no-playlist --extractor-retries 3 --socket-timeout 30 -o "${outTemplate}" "${cleanUrl}"`;
   console.log(`   CMD: ${cmd}`);
 
   try {
@@ -187,9 +187,15 @@ export function downloadYouTube(url: string): string {
     throw new Error(`yt-dlp failed (exit ${err.status}): ${err.stderr || err.message}`);
   }
 
-  const stat = fs.statSync(outPath);
-  console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${outPath}`);
-  return outPath;
+  const files = fs.readdirSync(tmpDir);
+  console.log(`   📂 Files in tmpDir: ${files.join(', ')}`);
+  if (files.length === 0) throw new Error('yt-dlp produced no output file');
+  const videoFile = files[0];
+  const videoPath = path.join(tmpDir, videoFile);
+
+  const stat = fs.statSync(videoPath);
+  console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${videoPath}`);
+  return videoPath;
 }
 
 /** Extract 1 frame every 5 seconds using local ffmpeg */
