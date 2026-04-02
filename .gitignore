@@ -1,8 +1,5 @@
-__pycache__/
-*.pyc
-*.db
-uploads/
-latest_result.json
+node_modules/
+dist/
 .env
 .vercel/
-node_modules/
+bin/

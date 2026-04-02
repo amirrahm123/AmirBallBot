@@ -2,8 +2,8 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+      "src": "dist/server.js",
+      "use": "@vercel/node"
     },
     {
       "src": "index.html",
@@ -11,7 +11,9 @@
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/api/(.*)", "dest": "/dist/server.js" },
     { "src": "/(.*)", "dest": "/index.html" }
-  ]
+  ],
+  "buildCommand": "npm run build",
+  "installCommand": "npm install"
 }
