@@ -109,7 +109,7 @@ router.post('/upload', upload.array('files', 10), async (req: Request, res: Resp
 // DELETE /api/knowledge/document/:index — remove a document
 router.delete('/document/:index', async (req: Request, res: Response) => {
   try {
-    const index = parseInt(req.params.index as string);
+    const index = parseInt(String(req.params.index));
     const knowledge = await TeamKnowledge.findOne({ teamId: DEFAULT_TEAM_ID });
     if (!knowledge || index < 0 || index >= knowledge.documents.length) {
       res.status(404).json({ error: 'מסמך לא נמצא' });
