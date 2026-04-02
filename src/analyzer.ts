@@ -285,6 +285,65 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
 }
 
 // ============================================================
+// GOOGLE DRIVE MODE: yt-dlp download → ffmpeg → Claude Vision
+// ============================================================
+
+/** Download video from Google Drive using yt-dlp */
+function downloadGoogleDrive(url: string): string {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-gdrive-'));
+  const outTemplate = path.join(tmpDir, 'video.%(ext)s');
+  console.log(`\n📥 [1/4] Downloading Google Drive video: ${url}`);
+
+  const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
+  const cmd = `${ytdlp} --no-check-certificates --no-playlist -o "${outTemplate}" "${url}"`;
+  console.log(`   CMD: ${cmd}`);
+
+  try {
+    const output = execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
+    console.log(`   yt-dlp stdout:\n${output}`);
+  } catch (err: any) {
+    console.error(`   ❌ yt-dlp FAILED`);
+    console.error(`   CMD: ${cmd}`);
+    console.error(`   EXIT CODE: ${err.status}`);
+    console.error(`   STDOUT: ${err.stdout || '(empty)'}`);
+    console.error(`   STDERR: ${err.stderr || '(empty)'}`);
+    throw new Error(`yt-dlp failed (exit ${err.status}): ${err.stderr || err.message}`);
+  }
+
+  const files = fs.readdirSync(tmpDir);
+  console.log(`   📂 Files in tmpDir: ${files.join(', ')}`);
+  if (files.length === 0) throw new Error('yt-dlp produced no output file from Google Drive');
+  const videoFile = files[0];
+  const videoPath = path.join(tmpDir, videoFile);
+
+  const stat = fs.statSync(videoPath);
+  console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${videoPath}`);
+  return videoPath;
+}
+
+/** Analyze Google Drive video: yt-dlp → ffmpeg → Claude Vision */
+export async function analyzeGoogleDrive(url: string, context: string, focus: string): Promise<AnalysisResult> {
+  console.log('\n🏀 ========== GOOGLE DRIVE ANALYSIS PIPELINE ==========');
+  console.log(`   URL: ${url}`);
+  console.log(`   Focus: ${focus}`);
+  console.log(`   Context: ${context || '(none)'}`);
+
+  const videoPath = downloadGoogleDrive(url);
+  const frames = extractFrames(videoPath);
+  if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
+
+  const result = await analyzeFrames(frames, context, focus);
+
+  console.log('\n🧹 [4/4] Cleaning up temp files...');
+  frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+  try { fs.unlinkSync(videoPath); } catch {}
+  console.log('   ✅ Cleanup done');
+  console.log('🏀 ========== GOOGLE DRIVE PIPELINE COMPLETE ==========\n');
+
+  return result;
+}
+
+// ============================================================
 // PUBLIC API: auto-selects local or cloud mode
 // ============================================================
 

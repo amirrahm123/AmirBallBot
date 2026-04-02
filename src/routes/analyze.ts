@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { analyzeVideo, analyzeYouTubeCloud, analyzeImage } from '../analyzer';
+import { analyzeVideo, analyzeYouTubeCloud, analyzeGoogleDrive, analyzeImage } from '../analyzer';
 import { Game } from '../database';
 
 const router = Router();
@@ -34,10 +34,14 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 
       try { fs.unlinkSync(req.file.path); } catch {}
 
+    } else if (youtubeUrl && youtubeUrl.includes('drive.google.com')) {
+      console.log('📂 Detected Google Drive URL');
+      result = await analyzeGoogleDrive(youtubeUrl, context, focus);
     } else if (youtubeUrl) {
+      console.log('📺 Detected YouTube URL');
       result = await analyzeYouTubeCloud(youtubeUrl, context, focus);
     } else {
-      res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
+      res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube / Google Drive' });
       return;
     }
 
