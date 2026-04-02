@@ -3,8 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { analyzeVideo, analyzeYouTubeCloud, analyzeGoogleDrive, analyzeImage } from '../analyzer';
-import { Game } from '../database';
+import { analyzeVideo, analyzeYouTubeCloud, analyzeGoogleDrive, analyzeImage, RosterPlayer } from '../analyzer';
+import { Game, Roster } from '../database';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -18,7 +18,17 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const context = req.body?.context || '';
     const focus = req.body?.focus || 'all';
 
-    console.log(`📊 Analysis request — focus: ${focus}, youtube: ${!!youtubeUrl}, file: ${!!req.file}`);
+    // Load roster from DB
+    let roster: RosterPlayer[] = [];
+    try {
+      const rosterDoc = await Roster.findOne({ teamId: 'default' });
+      if (rosterDoc && rosterDoc.players.length > 0) {
+        roster = rosterDoc.players.map(p => ({ number: p.number, name: p.name, position: p.position }));
+        console.log(`👥 Roster loaded: ${roster.length} players`);
+      }
+    } catch {}
+
+    console.log(`📊 Analysis request — focus: ${focus}, youtube: ${!!youtubeUrl}, file: ${!!req.file}, roster: ${roster.length}`);
 
     let result;
 
@@ -27,19 +37,19 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       console.log(`📁 Uploaded file: ${req.file.originalname} (${ext})`);
 
       if (IMAGE_EXTS.includes(ext)) {
-        result = await analyzeImage(req.file.path, context, focus);
+        result = await analyzeImage(req.file.path, context, focus, roster);
       } else {
-        result = await analyzeVideo(req.file.path, context, focus);
+        result = await analyzeVideo(req.file.path, context, focus, roster);
       }
 
       try { fs.unlinkSync(req.file.path); } catch {}
 
     } else if (youtubeUrl && youtubeUrl.includes('drive.google.com')) {
       console.log('📂 Detected Google Drive URL');
-      result = await analyzeGoogleDrive(youtubeUrl, context, focus);
+      result = await analyzeGoogleDrive(youtubeUrl, context, focus, roster);
     } else if (youtubeUrl) {
       console.log('📺 Detected YouTube URL');
-      result = await analyzeYouTubeCloud(youtubeUrl, context, focus);
+      result = await analyzeYouTubeCloud(youtubeUrl, context, focus, roster);
     } else {
       res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube / Google Drive' });
       return;

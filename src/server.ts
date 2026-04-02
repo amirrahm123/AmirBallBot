@@ -6,6 +6,7 @@ import analyzeRouter from './routes/analyze';
 import chatRouter from './routes/chat';
 import playersRouter from './routes/players';
 import knowledgeRouter from './routes/knowledge';
+import rosterRouter from './routes/roster';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ app.use('/api/analyze', analyzeRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/players', playersRouter);
 app.use('/api/knowledge', knowledgeRouter);
+app.use('/api/roster', rosterRouter);
 console.log('✅ Routes registered');
 
 // Start server

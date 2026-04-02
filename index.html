@@ -240,6 +240,25 @@ textarea{resize:vertical;min-height:80px}
         <textarea id="game-context" placeholder="לדוגמה: הפועל חיפה נגד מכבי רעננה, ליגה לאומית, סיבוב 12. אנחנו צריכים לנצח כדי להישאר בפלייאוף..."></textarea>
       </div>
 
+      <div class="card">
+        <div class="card-header" style="cursor:pointer" onclick="document.getElementById('roster-section').classList.toggle('hidden');this.querySelector('.toggle-arrow').textContent=document.getElementById('roster-section').classList.contains('hidden')?'◀':'▼'">
+          <h3>רוסטר קבוצה <span id="roster-saved-badge" class="hidden" style="color:var(--accent);font-size:12px;font-weight:400;margin-right:8px">רוסטר שמור ✓</span></h3>
+          <span class="toggle-arrow" style="font-size:14px;color:var(--text3)">◀</span>
+        </div>
+        <div id="roster-section" class="hidden">
+          <div style="margin-bottom:12px">
+            <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם הקבוצה</label>
+            <input type="text" id="roster-team-name" placeholder="לדוגמה: מכבי תל אביב" style="direction:rtl">
+          </div>
+          <div id="roster-players" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" onclick="addRosterRow()">+ הוסף שחקן</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadExampleRoster()">טען דוגמה — מכבי תל אביב</button>
+            <button class="btn btn-primary btn-sm" onclick="saveRoster()">💾 שמור רוסטר</button>
+          </div>
+        </div>
+      </div>
+
       <button class="btn btn-primary" id="analyze-btn" style="align-self:flex-start;font-size:16px;padding:14px 32px">
         🔬 התחל ניתוח
       </button>
@@ -748,6 +767,82 @@ document.getElementById('generate-practice')?.addEventListener('click', async ()
 });
 
 function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// === Upload Screen Roster ===
+const POSITIONS = ['פוינט גארד','שוטינג גארד','סמול פורוורד','פאואר פורוורד','סנטר'];
+
+function addRosterRow(number, name, position) {
+  const container = document.getElementById('roster-players');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;align-items:center';
+  row.innerHTML = `
+    <input type="number" class="roster-number" placeholder="מס׳" value="${number||''}" style="width:60px;text-align:center;direction:ltr">
+    <input type="text" class="roster-name" placeholder="שם שחקן" value="${escapeHtml(name||'')}" style="flex:1;direction:rtl">
+    <select class="roster-position" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;direction:rtl">
+      <option value="">עמדה</option>
+      ${POSITIONS.map(p => `<option value="${p}" ${position===p?'selected':''}>${p}</option>`).join('')}
+    </select>
+    <button class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()" style="padding:6px 10px;color:var(--red)">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function getRosterData() {
+  const teamName = document.getElementById('roster-team-name').value.trim();
+  const rows = document.querySelectorAll('#roster-players > div');
+  const players = [];
+  rows.forEach(row => {
+    const number = parseInt(row.querySelector('.roster-number').value);
+    const name = row.querySelector('.roster-name').value.trim();
+    const position = row.querySelector('.roster-position').value;
+    if (name && !isNaN(number)) players.push({ number, name, position });
+  });
+  return { teamName, players };
+}
+
+async function saveRoster() {
+  const data = getRosterData();
+  // Save to localStorage
+  localStorage.setItem('ballbot-roster', JSON.stringify(data));
+  // Save to server
+  try {
+    await fetch(API + '/api/roster', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+  } catch {}
+  document.getElementById('roster-saved-badge').classList.remove('hidden');
+  console.log('Roster saved:', data.players.length, 'players');
+}
+
+function loadExampleRoster() {
+  document.getElementById('roster-team-name').value = 'מכבי תל אביב';
+  document.getElementById('roster-players').innerHTML = '';
+  const example = [
+    { number: 5, name: 'דרור בלוך', position: 'פוינט גארד' },
+    { number: 8, name: "ג'ייסון תומפסון", position: 'סנטר' },
+    { number: 10, name: 'ידיד חיון', position: 'שוטינג גארד' },
+    { number: 14, name: "ג'ון דיפנטי", position: 'פאואר פורוורד' },
+    { number: 22, name: "אנג'לו קאון", position: 'סמול פורוורד' },
+  ];
+  example.forEach(p => addRosterRow(p.number, p.name, p.position));
+}
+
+// Load saved roster on startup
+(function initRoster() {
+  const saved = localStorage.getItem('ballbot-roster');
+  if (saved) {
+    try {
+      const data = JSON.parse(saved);
+      if (data.teamName) document.getElementById('roster-team-name').value = data.teamName;
+      if (data.players && data.players.length > 0) {
+        data.players.forEach(p => addRosterRow(p.number, p.name, p.position));
+        document.getElementById('roster-saved-badge').classList.remove('hidden');
+      }
+    } catch {}
+  }
+})();
 
 // Initial roster load attempt
 loadRoster();

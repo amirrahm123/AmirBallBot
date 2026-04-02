@@ -30,8 +30,23 @@ export interface AnalysisResult {
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
 }
 
+export interface RosterPlayer {
+  number: number;
+  name: string;
+  position: string;
+}
+
 function getClient(): Anthropic {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
+
+function buildSystemPrompt(roster?: RosterPlayer[]): string {
+  let prompt = SYSTEM_PROMPT;
+  if (roster && roster.length > 0) {
+    const rosterText = roster.map(p => `#${p.number} ${p.name} - ${p.position}`).join('\n');
+    prompt += `\n\nרוסטר הקבוצה:\n${rosterText}\n\nהשתמש במידע הזה כדי לזהות שחקנים בסרטון לפי מספר גופייה.`;
+  }
+  return prompt;
 }
 
 // ============================================================
@@ -108,7 +123,7 @@ async function fetchYouTubeMetadata(url: string): Promise<string> {
 }
 
 /** Vercel-compatible: analyze YouTube via thumbnails */
-export async function analyzeYouTubeCloud(url: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeYouTubeCloud(url: string, context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log('\n☁️ ========== CLOUD YOUTUBE ANALYSIS ==========');
   console.log(`   URL: ${url}`);
 
@@ -139,7 +154,7 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: SYSTEM_PROMPT,
+    system: buildSystemPrompt(roster),
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
   });
 
@@ -237,7 +252,7 @@ export function extractFrames(videoPath: string): string[] {
 }
 
 /** Send frame files to Claude Vision API */
-export async function analyzeFrames(frames: string[], context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeFrames(frames: string[], context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log(`\n🤖 [3/4] Sending ${frames.length} frames to Claude Vision...`);
   const client = getClient();
 
@@ -261,7 +276,7 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: SYSTEM_PROMPT,
+    system: buildSystemPrompt(roster),
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
   });
 
@@ -322,7 +337,7 @@ function downloadGoogleDrive(url: string): string {
 }
 
 /** Analyze Google Drive video: yt-dlp → ffmpeg → Claude Vision */
-export async function analyzeGoogleDrive(url: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeGoogleDrive(url: string, context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log('\n🏀 ========== GOOGLE DRIVE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
@@ -332,7 +347,7 @@ export async function analyzeGoogleDrive(url: string, context: string, focus: st
   const frames = extractFrames(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
-  const result = await analyzeFrames(frames, context, focus);
+  const result = await analyzeFrames(frames, context, focus, roster);
 
   console.log('\n🧹 [4/4] Cleaning up temp files...');
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
@@ -348,7 +363,7 @@ export async function analyzeGoogleDrive(url: string, context: string, focus: st
 // ============================================================
 
 /** Analyze YouTube — full pipeline: yt-dlp → ffmpeg → Claude Vision */
-export async function analyzeYouTube(url: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
@@ -358,7 +373,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   const frames = extractFrames(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
-  const result = await analyzeFrames(frames, context, focus);
+  const result = await analyzeFrames(frames, context, focus, roster);
 
   console.log('\n🧹 [4/4] Cleaning up temp files...');
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
@@ -370,18 +385,18 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file (local only) */
-export async function analyzeVideo(videoPath: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
   const frames = extractFrames(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
-  const result = await analyzeFrames(frames, context, focus);
+  const result = await analyzeFrames(frames, context, focus, roster);
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
 
 /** Analyze a single image file */
-export async function analyzeImage(imagePath: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeImage(imagePath: string, context: string, focus: string, roster?: RosterPlayer[]): Promise<AnalysisResult> {
   console.log('\n🖼️ Analyzing single image...');
-  return analyzeFrames([imagePath], context, focus);
+  return analyzeFrames([imagePath], context, focus, roster);
 }
