@@ -172,10 +172,20 @@ export function downloadYouTube(url: string): string {
 
   const cleanUrl = url.split('&t=')[0];
   const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
-  const cmd = `${ytdlp} -o "${outPath}" "${cleanUrl}"`;
+  const cmd = `${ytdlp} --no-check-certificates --no-playlist --extractor-retries 3 --socket-timeout 30 -o "${outPath}" "${cleanUrl}"`;
   console.log(`   CMD: ${cmd}`);
 
-  execSync(cmd, { stdio: 'inherit', timeout: 300000 });
+  try {
+    const output = execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
+    console.log(`   yt-dlp stdout:\n${output}`);
+  } catch (err: any) {
+    console.error(`   ❌ yt-dlp FAILED`);
+    console.error(`   CMD: ${cmd}`);
+    console.error(`   EXIT CODE: ${err.status}`);
+    console.error(`   STDOUT: ${err.stdout || '(empty)'}`);
+    console.error(`   STDERR: ${err.stderr || '(empty)'}`);
+    throw new Error(`yt-dlp failed (exit ${err.status}): ${err.stderr || err.message}`);
+  }
 
   const stat = fs.statSync(outPath);
   console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${outPath}`);
