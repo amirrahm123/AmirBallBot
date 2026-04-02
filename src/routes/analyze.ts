@@ -17,6 +17,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const youtubeUrl = req.body?.youtube_url;
     const context = req.body?.context || '';
     const focus = req.body?.focus || 'all';
+    const homeTeamOverride = req.body?.home_team?.trim() || '';
+    const awayTeam = req.body?.away_team?.trim() || '';
 
     // Load roster from DB
     let roster: RosterPlayer[] = [];
@@ -25,8 +27,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       const rosterDoc = await Roster.findOne({ teamId: 'default' });
       if (rosterDoc && rosterDoc.players.length > 0) {
         roster = rosterDoc.players.map(p => ({ number: p.number, name: p.name, position: p.position }));
-        teamName = rosterDoc.teamName || undefined;
-        console.log(`👥 Roster loaded: ${roster.length} players for "${teamName || 'unknown team'}"`);
+        teamName = homeTeamOverride || rosterDoc.teamName || undefined;
+        console.log(`👥 Roster loaded: ${roster.length} players for "${teamName || 'unknown team'}"${awayTeam ? ` vs "${awayTeam}"` : ''}`);
       }
     } catch {}
 
@@ -39,19 +41,19 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       console.log(`📁 Uploaded file: ${req.file.originalname} (${ext})`);
 
       if (IMAGE_EXTS.includes(ext)) {
-        result = await analyzeImage(req.file.path, context, focus, roster, teamName);
+        result = await analyzeImage(req.file.path, context, focus, roster, teamName, awayTeam);
       } else {
-        result = await analyzeVideo(req.file.path, context, focus, roster, teamName);
+        result = await analyzeVideo(req.file.path, context, focus, roster, teamName, awayTeam);
       }
 
       try { fs.unlinkSync(req.file.path); } catch {}
 
     } else if (youtubeUrl && youtubeUrl.includes('drive.google.com')) {
       console.log('📂 Detected Google Drive URL');
-      result = await analyzeGoogleDrive(youtubeUrl, context, focus, roster, teamName);
+      result = await analyzeGoogleDrive(youtubeUrl, context, focus, roster, teamName, awayTeam);
     } else if (youtubeUrl) {
       console.log('📺 Detected YouTube URL');
-      result = await analyzeYouTubeCloud(youtubeUrl, context, focus, roster, teamName);
+      result = await analyzeYouTubeCloud(youtubeUrl, context, focus, roster, teamName, awayTeam);
     } else {
       res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube / Google Drive' });
       return;

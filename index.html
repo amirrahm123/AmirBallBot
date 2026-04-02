@@ -194,8 +194,8 @@ textarea{resize:vertical;min-height:80px}
   .profile-header{flex-direction:column;text-align:center}
 }
 
-/* Video player — sticky at top */
-.video-sticky{position:sticky;top:0;z-index:20;display:flex;flex-direction:column;gap:12px}
+/* Video player */
+.video-sticky{display:flex;flex-direction:column;gap:12px}
 .video-player-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .video-player-card iframe{display:block;width:100%;height:400px;border:none}
 .video-player-card .video-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--bg3)}
@@ -247,6 +247,16 @@ textarea{resize:vertical;min-height:80px}
           <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">או הכנס קישור YouTube / Google Drive</label>
           <input type="url" id="youtube-url" placeholder="הדבק לינק מ-YouTube או Google Drive" style="direction:ltr;text-align:left">
           <small style="color:var(--text3);margin-top:4px;display:block;font-size:11px">Google Drive מומלץ לניתוח מלא — YouTube מוגבל ל-4 פריימים</small>
+        </div>
+        <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם קבוצה ביתית (חולצות בהירות)</label>
+            <input type="text" id="home-team" placeholder="לדוגמה: הפועל תל אביב" style="direction:rtl">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם קבוצה אורחת (חולצות כהות)</label>
+            <input type="text" id="away-team" placeholder="לדוגמה: מכבי תל אביב" style="direction:rtl">
+          </div>
         </div>
       </div>
 
@@ -584,6 +594,8 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     if (ytUrl) formData.append('youtube_url', ytUrl);
     formData.append('context', context);
     formData.append('focus', focus);
+    formData.append('home_team', document.getElementById('home-team').value.trim());
+    formData.append('away_team', document.getElementById('away-team').value.trim());
 
     // 5 minute timeout to prevent hanging forever
     const controller = new AbortController();
@@ -1044,6 +1056,8 @@ async function saveRoster() {
     });
   } catch {}
   document.getElementById('roster-saved-badge').classList.remove('hidden');
+  // Sync home team field
+  if (data.teamName) document.getElementById('home-team').value = data.teamName;
   console.log('Roster saved:', data.players.length, 'players');
 }
 
@@ -1066,7 +1080,10 @@ function loadExampleRoster() {
   if (saved) {
     try {
       const data = JSON.parse(saved);
-      if (data.teamName) document.getElementById('roster-team-name').value = data.teamName;
+      if (data.teamName) {
+        document.getElementById('roster-team-name').value = data.teamName;
+        document.getElementById('home-team').value = data.teamName;
+      }
       if (data.players && data.players.length > 0) {
         data.players.forEach(p => addRosterRow(p.number, p.name, p.position));
         document.getElementById('roster-saved-badge').classList.remove('hidden');
