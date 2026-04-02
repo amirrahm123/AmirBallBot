@@ -248,7 +248,11 @@ textarea{resize:vertical;min-height:80px}
         <div id="roster-section" class="hidden">
           <div style="margin-bottom:12px">
             <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם הקבוצה</label>
-            <input type="text" id="roster-team-name" placeholder="לדוגמה: מכבי תל אביב" style="direction:rtl">
+            <div style="display:flex;gap:8px">
+              <input type="text" id="roster-team-name" placeholder="לדוגמה: מכבי תל אביב, Lakers, Real Madrid" style="direction:rtl;flex:1">
+              <button class="btn btn-secondary btn-sm" id="fetch-roster-btn" onclick="fetchRosterAuto()">טען רוסטר אוטומטית 🔍</button>
+            </div>
+            <small id="fetch-roster-status" style="color:var(--text3);margin-top:4px;display:none;font-size:11px"></small>
           </div>
           <div id="roster-players" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -770,6 +774,49 @@ function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 
 // === Upload Screen Roster ===
 const POSITIONS = ['פוינט גארד','שוטינג גארד','סמול פורוורד','פאואר פורוורד','סנטר'];
+
+async function fetchRosterAuto() {
+  const teamName = document.getElementById('roster-team-name').value.trim();
+  if (!teamName) {
+    document.getElementById('fetch-roster-status').style.display = 'block';
+    document.getElementById('fetch-roster-status').textContent = '⚠️ הכנס שם קבוצה קודם';
+    document.getElementById('fetch-roster-status').style.color = 'var(--red)';
+    return;
+  }
+
+  const btn = document.getElementById('fetch-roster-btn');
+  const status = document.getElementById('fetch-roster-status');
+  btn.disabled = true;
+  btn.textContent = 'מחפש... ⏳';
+  status.style.display = 'block';
+  status.style.color = 'var(--text3)';
+  status.textContent = `מחפש רוסטר עבור "${teamName}"...`;
+
+  try {
+    const res = await fetch(API + '/api/roster/fetch', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ teamName })
+    });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+    if (!data.players || data.players.length === 0) throw new Error('לא נמצאו שחקנים');
+
+    // Clear existing rows and populate
+    document.getElementById('roster-players').innerHTML = '';
+    data.players.forEach(p => addRosterRow(p.number, p.name, p.position));
+
+    status.style.color = 'var(--accent)';
+    status.textContent = `✅ נמצאו ${data.players.length} שחקנים — בדוק ושמור`;
+  } catch (err) {
+    status.style.color = 'var(--red)';
+    status.textContent = '❌ ' + (err.message || 'שגיאה באחזור רוסטר');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'טען רוסטר אוטומטית 🔍';
+  }
+}
 
 function addRosterRow(number, name, position) {
   const container = document.getElementById('roster-players');
