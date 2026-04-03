@@ -281,7 +281,16 @@ textarea{resize:vertical;min-height:80px}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-secondary btn-sm" onclick="addRosterRow()">+ הוסף שחקן</button>
             <button class="btn btn-secondary btn-sm" onclick="loadExampleRoster()">טען דוגמה — מכבי תל אביב</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleJsonImport()">ייבוא JSON</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportRosterJson()">ייצוא JSON</button>
             <button class="btn btn-primary btn-sm" onclick="saveRoster()">💾 שמור רוסטר</button>
+          </div>
+          <div id="json-import-section" class="hidden" style="margin-top:12px">
+            <textarea id="json-import-input" placeholder='[{"name":"שם","number":5,"position":"PG"}]' style="direction:ltr;text-align:left;min-height:100px;font-family:'DM Mono',monospace;font-size:12px"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+              <button class="btn btn-primary btn-sm" onclick="importRosterJson()">ייבוא</button>
+              <span id="json-import-error" style="font-size:12px;color:var(--red);display:none"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -978,6 +987,53 @@ function addRosterRow(number, name, position) {
     <button class="btn btn-secondary btn-sm" onclick="this.parentElement.remove()" style="padding:6px 10px;color:var(--red)">✕</button>
   `;
   container.appendChild(row);
+}
+
+// Position shorthand mapping (PG/SG/SF/PF/C → Hebrew)
+const POS_MAP = {'PG':'פוינט גארד','SG':'שוטינג גארד','SF':'סמול פורוורד','PF':'פאואר פורוורד','C':'סנטר'};
+
+function toggleJsonImport() {
+  document.getElementById('json-import-section').classList.toggle('hidden');
+  document.getElementById('json-import-error').style.display = 'none';
+}
+
+function importRosterJson() {
+  const raw = document.getElementById('json-import-input').value.trim();
+  const errEl = document.getElementById('json-import-error');
+  errEl.style.display = 'none';
+  try {
+    const players = JSON.parse(raw);
+    if (!Array.isArray(players)) throw new Error('not array');
+    if (players.length === 0) throw new Error('empty');
+    // Validate each player has name and number
+    players.forEach(p => {
+      if (!p.name || p.number == null) throw new Error('missing fields');
+    });
+    // Clear existing rows and populate
+    document.getElementById('roster-players').innerHTML = '';
+    players.forEach(p => {
+      const pos = POS_MAP[p.position] || p.position || '';
+      addRosterRow(p.number, p.name, pos);
+    });
+    document.getElementById('json-import-section').classList.add('hidden');
+    document.getElementById('json-import-input').value = '';
+    console.log('Imported ' + players.length + ' players from JSON');
+  } catch (e) {
+    errEl.textContent = 'פורמט JSON שגוי — בדוק את הקובץ';
+    errEl.style.display = 'inline';
+  }
+}
+
+function exportRosterJson() {
+  const data = getRosterData();
+  const json = JSON.stringify(data.players, null, 2);
+  // Copy to clipboard and show feedback
+  navigator.clipboard.writeText(json).then(() => {
+    alert('הרוסטר הועתק ללוח — הדבק בקובץ כדי לשמור');
+  }).catch(() => {
+    // Fallback: show in prompt
+    prompt('העתק את ה-JSON:', json);
+  });
 }
 
 function getRosterData() {
