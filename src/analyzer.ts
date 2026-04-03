@@ -40,19 +40,29 @@ If none of these events are clearly visible in the frames — write NOTHING. Ret
 Do not write notes about players standing, walking, or general positioning.
 Quality over quantity — 5 perfect notes beat 185 useless ones.
 
+Each play has a start_time and end_time. Use the frame timestamps to determine when the play STARTS and ENDS.
+For example if you see a pick and roll develop across frames at 4:15, 4:17, 4:19 → start_time: "4:15", end_time: "4:19".
+
 Return JSON only:
-{"game":"תיאור","plays":[{"time":"0:00","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
+{"game":"תיאור","plays":[{"start_time":"0:00","end_time":"0:08","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
 
 RULES:
 - Only analyze HOME team players
-- Every note needs: the clip timestamp, player description, what happened, why it matters tactically
+- Every note needs: start_time, end_time, player description, what happened, why it matters tactically
 - Never invent moments you did not see
 - Never write a timestamp you were not given
-- All output must be in Hebrew`;
+- All output must be in Hebrew
+
+DEFENSIVE NOTES — strict rules:
+- ONLY write a defensive note if you clearly see a defensive action in the frames
+- The player being defended and the defender must both be visible
+- If you cannot clearly identify who is defending who → skip it
+- Never write a defensive note based on ball position alone
+- Defensive notes must describe EXACTLY: who is the defender, who are they guarding, what specific action happened (block, steal, good position, foul, breakdown), and why it matters tactically`;
 
 export interface AnalysisResult {
   game: string;
-  plays: { time: string; type: string; label: string; note: string; players: string[] }[];
+  plays: { start_time: string; end_time: string; time?: string; type: string; label: string; note: string; players: string[] }[];
   insights: { type: 'good' | 'warn' | 'bad'; title: string; body: string }[];
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
 }
@@ -485,23 +495,22 @@ async function analyzeClip(
     });
   });
 
+  // Build frame timestamp list for Claude
+  const frameTimestamps = offsets.map(o => formatTimestampHuman(startTime + o));
+
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
-    text: `Clip timestamp: ${humanTime}
+    text: `Clip around ${humanTime}. Frame timestamps: ${frameTimestamps.join(', ')}
 
-Look at this 10 second sequence. Write a note ONLY if you see a significant event:
-basket scored, pick and roll, defensive breakdown, steal/turnover, fast break, timeout, or impressive individual move.
-
+Write a note ONLY if you see a significant event.
 If nothing significant happened — return {"game":"","plays":[],"insights":[],"shotChart":{}}
 
-If something DID happen, describe:
-1. What specific play happened
-2. Which team executed it (home team focus)
-3. What was the defensive response
-4. Tactical significance
+If something DID happen:
+- Set start_time to the frame where the play begins
+- Set end_time to the frame where it ends
+- Use ONLY timestamps from this list: ${frameTimestamps.join(', ')}
 
-Use ONLY the timestamp ${humanTime}. Write in Hebrew.
-פוקוס: ${focus} | הקשר: ${context || 'אין'}
+Write in Hebrew. פוקוס: ${focus} | הקשר: ${context || 'אין'}
 החזר JSON בלבד.`,
   };
 

@@ -89,6 +89,8 @@ textarea{resize:vertical;min-height:80px}
 .play-item.play-offense{border-left-color:var(--green)}
 .play-item.play-transition{border-left-color:var(--yellow)}
 .play-item .play-header{display:flex;align-items:center;gap:10px}
+.play-item .play-seek{font-size:12px;opacity:.5;flex-shrink:0;margin-left:2px}
+.play-item:hover .play-seek{opacity:1}
 .play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:44px;flex-shrink:0}
 .play-item .play-type{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
 .play-item .play-type.offense{background:rgba(0,229,160,.15);color:var(--green)}
@@ -690,8 +692,8 @@ function onPlayCardClick(el, index) {
   if (!wasActive) {
     el.classList.add('active-play');
     expanded.classList.remove('hidden');
-    // Seek video
-    seekVideo(play.time || '');
+    // Seek video to start_time (or fall back to time)
+    seekVideo(play.start_time || play.time || '');
   }
 }
 
@@ -723,10 +725,13 @@ function renderAnalysis(data) {
   document.getElementById('plays-list').innerHTML = plays.map((p, i) => {
     const typeClass = (p.type||'').toLowerCase().includes('defense') ? 'defense' : (p.type||'').toLowerCase().includes('transition') ? 'transition' : 'offense';
     const typeLabel = (p.type||'').toLowerCase().includes('defense') ? 'הגנה' : (p.type||'').toLowerCase().includes('transition') ? 'מעבר' : 'התקפה';
-    const time = formatDisplayTime(p.time||'');
+    const startTime = formatDisplayTime(p.start_time || p.time || '');
+    const endTime = formatDisplayTime(p.end_time || '');
+    const timeDisplay = endTime && endTime !== startTime ? startTime + ' — ' + endTime : startTime;
     return `<div class="play-item play-${typeClass}" onclick="onPlayCardClick(this, ${i})">
       <div class="play-header">
-        <span class="play-time">${time}</span>
+        <span class="play-seek">▶</span>
+        <span class="play-time">${timeDisplay}</span>
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
       </div>
