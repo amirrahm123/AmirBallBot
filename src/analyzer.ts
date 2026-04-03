@@ -98,7 +98,10 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
-function buildSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?: string): string {
+/** Build system prompt with Anthropic prompt caching enabled.
+ *  The system prompt + roster are cached across calls in the same session,
+ *  reducing input token costs by ~90% on repeated calls. */
+function buildCachedSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Anthropic.TextBlockParam[] {
   let prompt = SYSTEM_PROMPT;
   if (roster && roster.length > 0) {
     const home = teamName || 'הקבוצה שלנו';
@@ -109,7 +112,11 @@ function buildSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?
 רוסטר ${home}:
 ${rosterText}`;
   }
-  return prompt;
+  return [{
+    type: 'text' as const,
+    text: prompt,
+    cache_control: { type: 'ephemeral' },
+  } as any];
 }
 
 // ============================================================
@@ -211,7 +218,7 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
   const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 8192,
-    system: buildSystemPrompt(roster, teamName, awayTeam),
+    system: buildCachedSystemPrompt(roster, teamName, awayTeam),
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
   }, jobId);
 
@@ -538,7 +545,7 @@ Write in Hebrew. פוקוס: ${focus} | הקשר: ${context || 'אין'}
   const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: buildSystemPrompt(roster, teamName, awayTeam),
+    system: buildCachedSystemPrompt(roster, teamName, awayTeam),
     messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
   }, jobId);
 
@@ -707,7 +714,7 @@ export async function analyzeImage(imagePath: string, context: string, focus: st
   const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 8192,
-    system: buildSystemPrompt(roster, teamName, awayTeam),
+    system: buildCachedSystemPrompt(roster, teamName, awayTeam),
     messages: [{
       role: 'user',
       content: [
