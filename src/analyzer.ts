@@ -24,19 +24,23 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   ? path.join(BIN_DIR, 'ffprobe.exe')
   : 'ffprobe';
 
-const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי. נתח כל פריים בעומק ובדיוק. החזר JSON בלבד:
-{"game":"תיאור","plays":[{"time":"00:00","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["#5"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
+const SYSTEM_PROMPT = `You are an expert basketball analyst and assistant coach.
+You are analyzing frames extracted from a game video.
+Each frame has an exact timestamp — USE ONLY THOSE TIMESTAMPS.
 
-**כללי חובה:**
-- חלץ מינימום 15-20 מהלכים סה"כ מכל הפריימים. לא פחות!
-- מכל פריים: תמצא 2-4 מהלכים ספציפיים (לא כלליים).
-- תאר בדיוק מה שאתה רואה: שחקנים, הכדור, תנועה, תוצאה.
-- דלג רק על: שידורים חוזרים, טיימאוטים בלבד, קהל, פרסומת, קלוז-אפ מוחלד.
-- בלוק=חסימת כדור חוקית. פאול=פגיעה בזרוע/גוף.
-- אין ציון מספרי גופיות בהערות (תיאור בעברית בלבד).
-- זיהוי קבוצות: הפועל ת"א=אדום, מכבי ת"א=צהוב, הפועל י-ם=שחור, מכבי חיפה=ירוק, הפועל חיפה=אדום, מכבי רעננה=כחול.
-- כל הערה חייבת להיות ייחודית — אין הערות כלליות או חוזרות.
-- time בפורמט M:SS (למשל 3:00). השתמש אך ורק בחותמת הזמן המדויקת של הפריים. אל תמציא זמנים שלא ניתנו לך.`;
+Return JSON only:
+{"game":"תיאור","plays":[{"time":"0:00","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
+
+RULES:
+- Write 2-4 specific play notes per frame
+- Minimum 15 play notes total
+- Only analyze HOME team players
+- Every note needs: timestamp, player description, what happened, why it matters tactically
+- At least 5 defensive notes (breakdowns and highlights)
+- At least 3 pick and roll notes
+- Never invent moments you did not see in a frame
+- Never write a timestamp you were not given
+- All output must be in Hebrew`;
 
 export interface AnalysisResult {
   game: string;
@@ -177,12 +181,12 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
     text: `${metadata}\nפוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nנתח את התמונות האלה מהמשחק והחזר JSON.`,
   };
 
-  const response = await client.messages.create({
+  const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 8192,
     system: buildSystemPrompt(roster, teamName, awayTeam),
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
-  });
+  }, jobId);
 
   if (jobId) await updateJobProgress(jobId, 80, 'מעבד תוצאות...');
 
@@ -367,7 +371,7 @@ Return all quarters you can identify. If you can't find a quarter, skip it.`,
   console.log(`   🤖 Sending ${scanFrames.length} frames to Claude for quarter detection...`);
 
   try {
-    const response = await client.messages.create({
+    const response = await callClaudeWithRetry(client, {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
@@ -525,11 +529,34 @@ export function extractFrames(videoPath: string): string[] {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-const BATCH_SIZE = 3;
-const BATCH_DELAY_MS = 15000;
-
 const MAX_RETRIES = 3;
 const RATE_LIMIT_WAIT_MS = 60000;
+
+/** Call Claude API with automatic retry on rate limit errors */
+async function callClaudeWithRetry(
+  client: Anthropic,
+  params: Anthropic.MessageCreateParamsNonStreaming,
+  jobId?: string,
+): Promise<Anthropic.Message> {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await client.messages.create(params);
+    } catch (err: any) {
+      const isRateLimit = err?.status === 429 || err?.error?.type === 'rate_limit_error' || (err?.message || '').includes('rate');
+      if (isRateLimit && attempt < MAX_RETRIES) {
+        console.log(`   ⚠️ Rate limit hit (attempt ${attempt}/${MAX_RETRIES}) — waiting ${RATE_LIMIT_WAIT_MS / 1000}s...`);
+        if (jobId) await updateJobProgress(jobId, -1, `מגבלת קצב — ממתין 60 שניות (ניסיון ${attempt}/${MAX_RETRIES})...`);
+        await sleep(RATE_LIMIT_WAIT_MS);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('נכשל לאחר מספר ניסיונות — מגבלת קצב');
+}
+
+const BATCH_SIZE = 3;
+const BATCH_DELAY_MS = 15000;
 
 /** Send a single batch of frames to Claude Vision API with retry on rate limit */
 async function analyzeBatch(
@@ -561,42 +588,28 @@ async function analyzeBatch(
     text: `פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר'}\n\n**הוראות חובה:**\n- כל מהלך חייב להשתמש בחותמת הזמן המדויקת של הפריים שבו ראית אותו. אל תמציא זמנים בין פריימים.\n- צריך להוציא מינימום 15-20 מהלכים סה"כ.\n- מכל פריים: 2-4 מהלכים שונים. תיאור מפורט: מה קרה, שחקנים, תוצאה.\n- החזר JSON בלבד.`,
   };
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
-        system: buildSystemPrompt(roster, teamName, awayTeam),
-        messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
-      });
+  const response = await callClaudeWithRetry(client, {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 8192,
+    system: buildSystemPrompt(roster, teamName, awayTeam),
+    messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
+  }, jobId);
 
-      const text = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map((block) => block.text)
-        .join('');
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('');
 
-      console.log(`   ✅ Batch responded (${text.length} chars)`);
-      console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
+  console.log(`   ✅ Batch responded (${text.length} chars)`);
+  console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error('   ❌ Raw response:', text.substring(0, 500));
-        throw new Error('לא נמצא JSON בתגובת Claude');
-      }
-
-      return JSON.parse(jsonMatch[0]);
-    } catch (err: any) {
-      const isRateLimit = err?.status === 429 || err?.error?.type === 'rate_limit_error' || (err?.message || '').includes('rate');
-      if (isRateLimit && attempt < MAX_RETRIES) {
-        console.log(`   ⚠️ Rate limit hit (attempt ${attempt}/${MAX_RETRIES}) — waiting ${RATE_LIMIT_WAIT_MS / 1000}s...`);
-        if (jobId) await updateJobProgress(jobId, -1, `מגבלת קצב — ממתין 60 שניות (ניסיון ${attempt}/${MAX_RETRIES})...`);
-        await sleep(RATE_LIMIT_WAIT_MS);
-        continue;
-      }
-      throw err;
-    }
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error('   ❌ Raw response:', text.substring(0, 500));
+    throw new Error('לא נמצא JSON בתגובת Claude');
   }
-  throw new Error('נכשל לאחר מספר ניסיונות — מגבלת קצב');
+
+  return JSON.parse(jsonMatch[0]);
 }
 
 /** Send frame files to Claude Vision API in batches of 3 to avoid rate limits */
