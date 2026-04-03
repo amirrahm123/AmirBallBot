@@ -25,20 +25,28 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   : 'ffprobe';
 
 const SYSTEM_PROMPT = `You are an expert basketball analyst and assistant coach.
-You are analyzing frames extracted from a game video.
-Each frame has an exact timestamp — USE ONLY THOSE TIMESTAMPS.
+You are watching a sequence of 5 frames from a 10 second clip.
+
+Only write a note if you see ONE of these specific events:
+- A basket being scored
+- A pick and roll being executed
+- A defensive breakdown (player lost their man)
+- A steal or turnover
+- A fast break
+- A timeout or play being drawn up
+- An impressive individual move
+
+If none of these events are clearly visible in the frames — write NOTHING. Return empty plays array for this clip.
+Do not write notes about players standing, walking, or general positioning.
+Quality over quantity — 5 perfect notes beat 185 useless ones.
 
 Return JSON only:
 {"game":"תיאור","plays":[{"time":"0:00","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
 
 RULES:
-- Write 2-4 specific play notes per frame
-- Minimum 15 play notes total
 - Only analyze HOME team players
-- Every note needs: timestamp, player description, what happened, why it matters tactically
-- At least 5 defensive notes (breakdowns and highlights)
-- At least 3 pick and roll notes
-- Never invent moments you did not see in a frame
+- Every note needs: the clip timestamp, player description, what happened, why it matters tactically
+- Never invent moments you did not see
 - Never write a timestamp you were not given
 - All output must be in Hebrew`;
 
@@ -479,20 +487,21 @@ async function analyzeClip(
 
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
-    text: `You are watching a 10 second basketball sequence.
-This clip was extracted because an important event was detected at exactly ${humanTime} in the video.
-The exact timestamp for this play is ${humanTime}.
+    text: `Clip timestamp: ${humanTime}
 
-Look at the sequence and describe:
+Look at this 10 second sequence. Write a note ONLY if you see a significant event:
+basket scored, pick and roll, defensive breakdown, steal/turnover, fast break, timeout, or impressive individual move.
+
+If nothing significant happened — return {"game":"","plays":[],"insights":[],"shotChart":{}}
+
+If something DID happen, describe:
 1. What specific play happened
 2. Which team executed it (home team focus)
 3. What was the defensive response
 4. Tactical significance
 
-Use ONLY the timestamp ${humanTime} — do not invent other times.
-Write in Hebrew.
-פוקוס: ${focus}
-הקשר: ${context || 'אין'}
+Use ONLY the timestamp ${humanTime}. Write in Hebrew.
+פוקוס: ${focus} | הקשר: ${context || 'אין'}
 החזר JSON בלבד.`,
   };
 
