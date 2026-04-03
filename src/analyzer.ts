@@ -486,7 +486,7 @@ Return all quarters you can identify. If you can't find a quarter, skip it.`,
 /** Step 2: Smart extraction — 5 frames per quarter using detected boundaries */
 function extractSmartFrames(videoPath: string, quarters: QuarterInfo[], duration: number): string[] {
   console.log(`\n📸 Smart frame extraction: 6 frames per quarter...`);
-  const FRAMES_PER_QUARTER = 6;
+  const FRAMES_PER_QUARTER = 5;
   const timestamps: number[] = [];
 
   for (let i = 0; i < quarters.length; i++) {
@@ -508,8 +508,8 @@ function extractSmartFrames(videoPath: string, quarters: QuarterInfo[], duration
 
 /** Fallback: equal time splits for 20 frames */
 function extractEqualSplitFrames(videoPath: string, duration: number): string[] {
-  console.log(`\n📸 Fallback: extracting 24 frames at equal intervals...`);
-  const TOTAL_FRAMES = 24;
+  console.log(`\n📸 Fallback: extracting 20 frames at equal intervals...`);
+  const TOTAL_FRAMES = 20;
   const step = duration / (TOTAL_FRAMES + 1);
   const timestamps: number[] = [];
   for (let i = 1; i <= TOTAL_FRAMES; i++) {
@@ -547,9 +547,9 @@ async function extractFramesSmart(videoPath: string): Promise<string[]> {
 
 /** Original simple extraction for short videos */
 function extractFramesSimple(videoPath: string, duration: number): string[] {
-  console.log(`\n📸 Simple extraction (1 frame every 5s)...`);
+  console.log(`\n📸 Simple extraction (1 frame every 3 minutes)...`);
 
-  const interval = 5;
+  const interval = 180; // 3 minutes
   const timestamps: number[] = [];
   for (let t = interval; t < duration; t += interval) {
     timestamps.push(t);
