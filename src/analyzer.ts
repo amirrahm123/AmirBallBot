@@ -576,24 +576,26 @@ export function extractFrames(videoPath: string): string[] {
   return extractFramesSimple(videoPath, duration);
 }
 
-/** Send frame files to Claude Vision API */
-export async function analyzeFrames(frames: string[], context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
-  console.log(`\n🤖 [3/4] Sending ${frames.length} frames to Claude Vision...`);
-  const client = getClient();
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-  // Build interleaved image + label blocks so Claude knows each frame's exact timestamp
+const BATCH_SIZE = 3;
+const BATCH_DELAY_MS = 15000;
+
+/** Send a single batch of frames to Claude Vision API */
+async function analyzeBatch(
+  client: Anthropic,
+  batchFrames: string[],
+  context: string,
+  focus: string,
+  roster?: RosterPlayer[],
+  teamName?: string,
+  awayTeam?: string,
+): Promise<AnalysisResult> {
   const contentBlocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [];
-  frames.forEach((framePath, i) => {
+  batchFrames.forEach((framePath) => {
     const data = fs.readFileSync(framePath).toString('base64');
-    const sizeKB = (Buffer.byteLength(data, 'base64') / 1024).toFixed(0);
     const basename = path.basename(framePath, '.jpg');
-    console.log(`   📷 Frame ${i + 1}/${frames.length}: ${basename} (${sizeKB}KB)`);
-
-    // Label before each image so Claude knows the exact timestamp
-    contentBlocks.push({
-      type: 'text' as const,
-      text: `Frame filename: ${basename}`,
-    });
+    contentBlocks.push({ type: 'text' as const, text: `Frame filename: ${basename}` });
     contentBlocks.push({
       type: 'image' as const,
       source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
@@ -605,9 +607,6 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
     text: `פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nשם הקובץ של כל פריים הוא חותמת הזמן המדויקת שלו בסרטון (לדוגמה frame_00h04m46s = דקה 4:46).\nהשתמש אך ורק בחותמת הזמן משם הקובץ בשדה "time" של כל מהלך — אל תנחש או תעריך זמנים.\n\nנתח את הפריימים האלה מהמשחק והחזר JSON.`,
   };
 
-  console.log(`   📡 Calling Claude claude-sonnet-4-20250514 with ${frames.length} images...`);
-  if (jobId) await updateJobProgress(jobId, 60, `שולח ${frames.length} פריימים ל-Claude לניתוח...`);
-
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 8192,
@@ -615,14 +614,12 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
     messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
   });
 
-  if (jobId) await updateJobProgress(jobId, 85, 'מעבד תוצאות...');
-
   const text = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === 'text')
     .map((block) => block.text)
     .join('');
 
-  console.log(`   ✅ Claude responded (${text.length} chars)`);
+  console.log(`   ✅ Batch responded (${text.length} chars)`);
   console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -631,9 +628,64 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
     throw new Error('לא נמצא JSON בתגובת Claude');
   }
 
-  const result: AnalysisResult = JSON.parse(jsonMatch[0]);
-  console.log(`   ✅ Parsed: ${result.plays?.length || 0} plays, ${result.insights?.length || 0} insights`);
-  if (jobId) await updateJobProgress(jobId, 95, `נמצאו ${result.plays?.length || 0} מהלכים — שומר...`);
+  return JSON.parse(jsonMatch[0]);
+}
+
+/** Send frame files to Claude Vision API in batches of 3 to avoid rate limits */
+export async function analyzeFrames(frames: string[], context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
+  console.log(`\n🤖 [3/4] Sending ${frames.length} frames to Claude Vision in batches of ${BATCH_SIZE}...`);
+  const client = getClient();
+
+  // Split frames into batches
+  const batches: string[][] = [];
+  for (let i = 0; i < frames.length; i += BATCH_SIZE) {
+    batches.push(frames.slice(i, i + BATCH_SIZE));
+  }
+
+  console.log(`   📦 ${batches.length} batches total`);
+
+  const allPlays: AnalysisResult['plays'] = [];
+  const allInsights: AnalysisResult['insights'] = [];
+  let lastShotChart: AnalysisResult['shotChart'] = { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 };
+  let gameSummary = '';
+
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b];
+    const batchNum = b + 1;
+
+    // Progress: scale from 50% to 90% across batches
+    const progressPct = Math.round(50 + (batchNum / batches.length) * 40);
+    const progressMsg = `מעבד קבוצת פריימים ${batchNum} מתוך ${batches.length}...`;
+    console.log(`   📡 Batch ${batchNum}/${batches.length}: ${batch.length} frames`);
+    if (jobId) await updateJobProgress(jobId, progressPct, progressMsg);
+
+    const batchResult = await analyzeBatch(client, batch, context, focus, roster, teamName, awayTeam);
+
+    if (batchResult.plays) allPlays.push(...batchResult.plays);
+    if (batchResult.insights) allInsights.push(...batchResult.insights);
+    if (batchResult.shotChart) lastShotChart = batchResult.shotChart;
+    if (batchResult.game) gameSummary = batchResult.game;
+
+    console.log(`   ✅ Batch ${batchNum}: ${batchResult.plays?.length || 0} plays`);
+
+    // Wait between batches to stay under rate limit
+    if (b < batches.length - 1) {
+      const waitMsg = `מעבד קבוצת פריימים ${batchNum} מתוך ${batches.length} — ממתין...`;
+      if (jobId) await updateJobProgress(jobId, progressPct, waitMsg);
+      console.log(`   ⏳ Waiting ${BATCH_DELAY_MS / 1000}s before next batch...`);
+      await sleep(BATCH_DELAY_MS);
+    }
+  }
+
+  const result: AnalysisResult = {
+    game: gameSummary,
+    plays: allPlays,
+    insights: allInsights,
+    shotChart: lastShotChart,
+  };
+
+  console.log(`   ✅ All batches done: ${result.plays.length} plays, ${result.insights.length} insights`);
+  if (jobId) await updateJobProgress(jobId, 95, `נמצאו ${result.plays.length} מהלכים — שומר...`);
   return result;
 }
 
