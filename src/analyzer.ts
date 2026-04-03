@@ -67,8 +67,6 @@ function buildSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?
     const rosterText = roster.map(p => `#${p.number} ${p.name} - ${p.position}`).join('\n');
     prompt += `\nבית: ${home} | חוץ: ${away}
 נתח רק את ${home}. אם ${away} מבקיע כתוב "הספגנו סל". אם לא בטוח מי השחקן כתוב "שחקן ${home}".
-אין לציין מספרי גופיות.
-בכל מהלך, time חייב להיות בפורמט MM:SS (למשל 03:00).
 רוסטר ${home}:
 ${rosterText}`;
   }
@@ -101,7 +99,7 @@ function fetchImageAsBase64(url: string): Promise<{ data: string; type: string }
         res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
-          if (buf.length < 1000) { resolve(null); return; } // too small = placeholder
+          if (buf.length < 1000) { resolve(null); return; }
           resolve({ data: buf.toString('base64'), type: res.headers['content-type'] || 'image/jpeg' });
         });
         res.on('error', () => resolve(null));
@@ -111,7 +109,7 @@ function fetchImageAsBase64(url: string): Promise<{ data: string; type: string }
   });
 }
 
-/** Fetch YouTube thumbnails at multiple timestamps via storyboard */
+/** Fetch YouTube thumbnails */
 async function fetchYouTubeThumbnails(videoId: string): Promise<{ data: string; type: string }[]> {
   console.log(`   📸 Fetching thumbnails for ${videoId}...`);
   const thumbUrls = [
@@ -123,7 +121,6 @@ async function fetchYouTubeThumbnails(videoId: string): Promise<{ data: string; 
     `https://img.youtube.com/vi/${videoId}/2.jpg`,
     `https://img.youtube.com/vi/${videoId}/3.jpg`,
   ];
-
   const results = await Promise.all(thumbUrls.map(u => fetchImageAsBase64(u)));
   const valid = results.filter((r): r is { data: string; type: string } => r !== null);
   console.log(`   ✅ Got ${valid.length} thumbnails`);
@@ -151,31 +148,22 @@ async function fetchYouTubeMetadata(url: string): Promise<string> {
 /** Vercel-compatible: analyze YouTube via thumbnails */
 export async function analyzeYouTubeCloud(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n☁️ ========== CLOUD YOUTUBE ANALYSIS ==========');
-  console.log(`   URL: ${url}`);
-
   const videoId = extractVideoId(url);
   if (!videoId) throw new Error('לא הצלחתי לחלץ מזהה סרטון מהקישור');
 
   if (jobId) await updateJobProgress(jobId, 10, 'מוריד תמונות מ-YouTube...');
-
-  // Fetch thumbnails + metadata in parallel
   const [thumbs, metadata] = await Promise.all([
     fetchYouTubeThumbnails(videoId),
     fetchYouTubeMetadata(url),
   ]);
-
   if (thumbs.length === 0) throw new Error('לא הצלחתי לטעון תמונות מהסרטון');
-
   if (jobId) await updateJobProgress(jobId, 30, `נמצאו ${thumbs.length} תמונות — שולח ל-Claude...`);
 
-  console.log(`\n🤖 Sending ${thumbs.length} thumbnails to Claude Vision...`);
   const client = getClient();
-
   const imageBlocks: Anthropic.ImageBlockParam[] = thumbs.map((t) => ({
     type: 'image' as const,
     source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: t.data },
   }));
-
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
     text: `${metadata}\nפוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nנתח את התמונות האלה מהמשחק והחזר JSON.`,
@@ -189,348 +177,73 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
   }, jobId);
 
   if (jobId) await updateJobProgress(jobId, 80, 'מעבד תוצאות...');
-
   const text = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === 'text')
     .map((block) => block.text)
     .join('');
 
-  console.log(`   ✅ Claude responded (${text.length} chars)`);
-  console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
-
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('לא נמצא JSON בתגובת Claude');
-
   const result: AnalysisResult = JSON.parse(jsonMatch[0]);
-  console.log(`   ✅ Parsed: ${result.plays?.length || 0} plays, ${result.insights?.length || 0} insights`);
   if (jobId) await updateJobProgress(jobId, 95, `נמצאו ${result.plays?.length || 0} מהלכים — שומר...`);
   console.log('☁️ ========== CLOUD ANALYSIS COMPLETE ==========\n');
   return result;
 }
 
 // ============================================================
-// LOCAL MODE: yt-dlp + ffmpeg + Claude Vision (full pipeline)
+// LOCAL MODE: yt-dlp download
 // ============================================================
 
 /** Download YouTube video using yt-dlp */
 export function downloadYouTube(url: string): string {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-yt-'));
   const outTemplate = path.join(tmpDir, 'video.%(ext)s');
-  console.log(`\n📥 [1/4] Downloading YouTube video: ${url}`);
-
+  console.log(`\n📥 Downloading YouTube video: ${url}`);
   const cleanUrl = url.split('&t=')[0];
   const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
   const cmd = `${ytdlp} --no-check-certificates --no-playlist --extractor-retries 3 --socket-timeout 30 -o "${outTemplate}" "${cleanUrl}"`;
-  console.log(`   CMD: ${cmd}`);
-
   try {
-    const output = execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
-    console.log(`   yt-dlp stdout:\n${output}`);
+    execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
   } catch (err: any) {
-    console.error(`   ❌ yt-dlp FAILED`);
-    console.error(`   CMD: ${cmd}`);
-    console.error(`   EXIT CODE: ${err.status}`);
-    console.error(`   STDOUT: ${err.stdout || '(empty)'}`);
-    console.error(`   STDERR: ${err.stderr || '(empty)'}`);
     throw new Error(`yt-dlp failed (exit ${err.status}): ${err.stderr || err.message}`);
   }
-
   const files = fs.readdirSync(tmpDir);
-  console.log(`   📂 Files in tmpDir: ${files.join(', ')}`);
   if (files.length === 0) throw new Error('yt-dlp produced no output file');
-  const videoFile = files[0];
-  const videoPath = path.join(tmpDir, videoFile);
+  const videoPath = path.join(tmpDir, files[0]);
+  const stat = fs.statSync(videoPath);
+  console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${videoPath}`);
+  return videoPath;
+}
 
+/** Download video from Google Drive using yt-dlp */
+function downloadGoogleDrive(url: string): string {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-gdrive-'));
+  const outTemplate = path.join(tmpDir, 'video.%(ext)s');
+  console.log(`\n📥 Downloading Google Drive video: ${url}`);
+  const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
+  const cmd = `${ytdlp} --no-check-certificates --no-playlist -o "${outTemplate}" "${url}"`;
+  try {
+    execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
+  } catch (err: any) {
+    throw new Error(`yt-dlp failed (exit ${err.status}): ${err.stderr || err.message}`);
+  }
+  const files = fs.readdirSync(tmpDir);
+  if (files.length === 0) throw new Error('yt-dlp produced no output file from Google Drive');
+  const videoPath = path.join(tmpDir, files[0]);
   const stat = fs.statSync(videoPath);
   console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${videoPath}`);
   return videoPath;
 }
 
 // ============================================================
-// FRAME EXTRACTION HELPERS
+// HELPERS
 // ============================================================
 
-const LONG_VIDEO_THRESHOLD = 30 * 60; // 30 minutes in seconds
-
-/** Get video duration in seconds using ffprobe */
-function getVideoDuration(videoPath: string): number {
-  const durationStr = execFileSync(FFPROBE, [
-    '-v', 'error', '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1', videoPath
-  ], { encoding: 'utf-8', timeout: 30000 }).trim();
-  return parseFloat(durationStr);
-}
-
-/** Extract frames at specific timestamps (in seconds) */
-function extractFramesAtSeconds(videoPath: string, timestamps: number[]): string[] {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-ts-frames-'));
-  const frames: string[] = [];
-
-  for (let i = 0; i < timestamps.length; i++) {
-    const ts = timestamps[i];
-    const outPath = path.join(tmpDir, `frame_${formatTimestampFilename(ts)}.jpg`);
-    try {
-      execFileSync(FFMPEG, [
-        '-ss', String(ts), '-i', videoPath,
-        '-frames:v', '1', '-q:v', '2', outPath, '-y'
-      ], { stdio: 'pipe', timeout: 30000 });
-      if (fs.existsSync(outPath)) frames.push(outPath);
-    } catch {
-      console.log(`   ⚠️ Failed to extract frame at ${ts}s`);
-    }
-  }
-
-  return frames;
-}
-
-/** Parse "MM:SS" or "HH:MM:SS" to seconds */
-function timestampToSeconds(ts: string): number | null {
-  const parts = ts.trim().split(':').map(Number);
-  if (parts.some(isNaN)) return null;
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  return null;
-}
-
-/** Format seconds as "MM:SS" */
-function formatTimestamp(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-/** Format seconds as "000140s" for embedding in frame filenames (140 = 2min 20s) */
-function formatTimestampFilename(secs: number): string {
-  return `at_${String(Math.floor(secs)).padStart(6, '0')}s`;
-}
-
-/** Format seconds as human-readable "M:SS" for Claude labels (e.g. 140 → "2:20") */
-function formatTimestampHuman(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-interface QuarterInfo {
-  quarter: number;
-  videoTimestamp: string;
-  seconds: number;
-}
-
-/** Step 1: Quick scan — detect quarter start times using Claude Vision */
-async function detectQuarters(videoPath: string, duration: number): Promise<QuarterInfo[] | null> {
-  console.log(`\n🔍 Quarter detection: scanning ${formatTimestamp(duration)} video...`);
-
-  // For videos >60 min, scan every 3 minutes; otherwise every 1 minute
-  const scanInterval = duration > 60 * 60 ? 180 : 60;
-  const scanTimestamps: number[] = [];
-  for (let t = 0; t < duration; t += scanInterval) {
-    scanTimestamps.push(t);
-  }
-  console.log(`   📸 Extracting ${scanTimestamps.length} scan frames (1 every ${scanInterval}s)...`);
-
-  const scanFrames = extractFramesAtSeconds(videoPath, scanTimestamps);
-  if (scanFrames.length === 0) {
-    console.log('   ❌ No scan frames extracted');
-    return null;
-  }
-  console.log(`   ✅ Got ${scanFrames.length} scan frames`);
-
-  // Send to Claude for quarter detection
-  const client = getClient();
-  const imageBlocks: Anthropic.ImageBlockParam[] = scanFrames.map((framePath, i) => {
-    const data = fs.readFileSync(framePath).toString('base64');
-    return {
-      type: 'image' as const,
-      source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
-    };
-  });
-
-  // Build timestamp labels so Claude knows which frame is which
-  const frameLabels = scanTimestamps.slice(0, scanFrames.length)
-    .map((ts, i) => `Frame ${i + 1}: ${formatTimestamp(ts)}`).join('\n');
-
-  const textBlock: Anthropic.TextBlockParam = {
-    type: 'text',
-    text: `Look at these frames from a basketball game broadcast.
-Each frame is taken at the following video timestamps:
-${frameLabels}
-
-Find the timestamps in the video where each quarter starts (Q1, Q2, Q3, Q4).
-Look for the scoreboard which shows quarter number and game clock.
-A new quarter starts when the game clock resets to the beginning (10:00 or 12:00).
-Q1 typically starts near the beginning of the video.
-
-Return JSON only, no other text:
-{ "quarters": [{"quarter": 1, "videoTimestamp": "00:08:30"}, {"quarter": 2, "videoTimestamp": "00:22:15"}, {"quarter": 3, "videoTimestamp": "00:45:00"}, {"quarter": 4, "videoTimestamp": "01:05:30"}] }
-
-videoTimestamp must be in MM:SS or HH:MM:SS format referring to the video time, not the game clock.
-Return all quarters you can identify. If you can't find a quarter, skip it.`,
-  };
-
-  console.log(`   🤖 Sending ${scanFrames.length} frames to Claude for quarter detection...`);
-
-  try {
-    const response = await callClaudeWithRetry(client, {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
-    });
-
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
-      .join('');
-
-    console.log(`   📊 Quarter detection usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
-    console.log(`   📝 Raw response: ${text.substring(0, 300)}`);
-
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.log('   ⚠️ No JSON found in quarter detection response');
-      return null;
-    }
-
-    const data = JSON.parse(jsonMatch[0]);
-    const quarters: QuarterInfo[] = (data.quarters || [])
-      .map((q: any) => {
-        const secs = timestampToSeconds(q.videoTimestamp);
-        if (secs == null) return null;
-        return { quarter: q.quarter, videoTimestamp: q.videoTimestamp, seconds: secs };
-      })
-      .filter((q: QuarterInfo | null): q is QuarterInfo => q !== null)
-      .sort((a: QuarterInfo, b: QuarterInfo) => a.quarter - b.quarter);
-
-    if (quarters.length === 0) {
-      console.log('   ⚠️ No valid quarters detected');
-      return null;
-    }
-
-    console.log(`   ✅ Detected ${quarters.length} quarters:`);
-    quarters.forEach(q => console.log(`      Q${q.quarter}: ${q.videoTimestamp} (${q.seconds}s)`));
-
-    // Cleanup scan frames
-    scanFrames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
-
-    return quarters;
-  } catch (err: any) {
-    console.log(`   ⚠️ Quarter detection failed: ${err.message}`);
-    scanFrames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
-    return null;
-  }
-}
-
-/** Step 2: Smart extraction — 5 frames per quarter using detected boundaries */
-function extractSmartFrames(videoPath: string, quarters: QuarterInfo[], duration: number): string[] {
-  console.log(`\n📸 Smart frame extraction: 6 frames per quarter...`);
-  const FRAMES_PER_QUARTER = 5;
-  const timestamps: number[] = [];
-
-  for (let i = 0; i < quarters.length; i++) {
-    const start = quarters[i].seconds;
-    const end = (i + 1 < quarters.length) ? quarters[i + 1].seconds : duration;
-    const quarterDuration = end - start;
-    const step = quarterDuration / (FRAMES_PER_QUARTER + 1);
-
-    for (let j = 1; j <= FRAMES_PER_QUARTER; j++) {
-      const ts = Math.floor(start + step * j);
-      timestamps.push(Math.min(ts, duration - 1));
-    }
-    console.log(`   Q${quarters[i].quarter}: ${formatTimestamp(start)} → ${formatTimestamp(end)} (${FRAMES_PER_QUARTER} frames, every ${formatTimestamp(step)})`);
-  }
-
-  console.log(`   📸 Extracting ${timestamps.length} frames at smart positions...`);
-  return extractFramesAtSeconds(videoPath, timestamps);
-}
-
-/** Fallback: equal time splits for 20 frames */
-function extractEqualSplitFrames(videoPath: string, duration: number): string[] {
-  console.log(`\n📸 Fallback: extracting 20 frames at equal intervals...`);
-  const TOTAL_FRAMES = 20;
-  const step = duration / (TOTAL_FRAMES + 1);
-  const timestamps: number[] = [];
-  for (let i = 1; i <= TOTAL_FRAMES; i++) {
-    timestamps.push(Math.floor(step * i));
-  }
-  return extractFramesAtSeconds(videoPath, timestamps);
-}
-
-/** Extract frames — smart quarter-based for long videos, simple for short */
-async function extractFramesSmart(videoPath: string): Promise<string[]> {
-  const duration = getVideoDuration(videoPath);
-  console.log(`   📹 Video duration: ${formatTimestamp(duration)} (${duration.toFixed(1)}s)`);
-
-  if (duration > LONG_VIDEO_THRESHOLD) {
-    console.log(`   📹 Long video detected (>${LONG_VIDEO_THRESHOLD / 60}min) — using quarter detection`);
-
-    const quarters = await detectQuarters(videoPath, duration);
-    if (quarters && quarters.length >= 2) {
-      const frames = extractSmartFrames(videoPath, quarters, duration);
-      if (frames.length > 0) {
-        console.log(`   ✅ Smart extraction: ${frames.length} frames across ${quarters.length} quarters`);
-        return frames;
-      }
-    }
-
-    // Fallback to equal splits
-    console.log('   ⚠️ Quarter detection failed or insufficient — falling back to equal splits');
-    const frames = extractEqualSplitFrames(videoPath, duration);
-    if (frames.length > 0) return frames;
-  }
-
-  // Short video: original logic — 1 frame every 5 seconds, cap at 20
-  return extractFramesSimple(videoPath, duration);
-}
-
-/** Original simple extraction for short videos — more aggressive for better coverage */
-function extractFramesSimple(videoPath: string, duration: number): string[] {
-  console.log(`\n📸 Smart frame extraction (adaptive intervals)...`);
-
-  // Adaptive frame rate based on video length:
-  // 5 min (300s) → ~8-10 frames (1 every 35-40s)
-  // 10 min (600s) → ~12-15 frames (1 every 40-50s)
-  // 30 min (1800s) → ~15-18 frames (1 every 100-120s)
-  // 90 min (5400s) → ~18-20 frames (1 every 270-300s)
-  const interval = Math.max(30, Math.min(300, Math.floor(duration / 15)));
-  const timestamps: number[] = [];
-  
-  for (let t = Math.floor(interval); t < duration; t += interval) {
-    timestamps.push(t);
-  }
-  
-  // If too few frames, add more strategic ones
-  if (timestamps.length < 6) {
-    timestamps.unshift(Math.floor(interval / 2));
-    if (duration > timestamps[timestamps.length - 1] + interval / 2) {
-      timestamps.push(Math.floor(duration - interval / 2));
-    }
-  }
-
-  // Cap at 25 frames for good coverage without token explosion
-  if (timestamps.length > 25) {
-    console.log(`   ⚠️ Many frames detected (${timestamps.length}), keeping best ${25}`);
-    const step = Math.ceil(timestamps.length / 25);
-    const selected = timestamps.filter((_, i) => i % step === 0).slice(0, 25);
-    timestamps.length = 0;
-    timestamps.push(...selected);
-  }
-
-  const frames = extractFramesAtSeconds(videoPath, timestamps);
-  console.log(`   ✅ Extracted ${frames.length} frames (~1 every ${Math.floor(duration / frames.length)}s) from ${(duration / 60).toFixed(1)}min video`);
-  return frames;
-}
-
-/** Legacy wrapper — kept for backward compat */
-export function extractFrames(videoPath: string): string[] {
-  const duration = getVideoDuration(videoPath);
-  console.log(`   📹 Video duration: ${duration.toFixed(1)}s`);
-  return extractFramesSimple(videoPath, duration);
-}
-
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
 const MAX_RETRIES = 3;
 const RATE_LIMIT_WAIT_MS = 60000;
+const MAX_CLIPS = 40;
+const CLIP_DELAY_MS = 15000;
 
 /** Call Claude API with automatic retry on rate limit errors */
 async function callClaudeWithRetry(
@@ -544,7 +257,7 @@ async function callClaudeWithRetry(
     } catch (err: any) {
       const isRateLimit = err?.status === 429 || err?.error?.type === 'rate_limit_error' || (err?.message || '').includes('rate');
       if (isRateLimit && attempt < MAX_RETRIES) {
-        console.log(`   ⚠️ Rate limit hit (attempt ${attempt}/${MAX_RETRIES}) — waiting ${RATE_LIMIT_WAIT_MS / 1000}s...`);
+        console.log(`   ⚠️ Rate limit hit (attempt ${attempt}/${MAX_RETRIES}) — waiting 60s...`);
         if (jobId) await updateJobProgress(jobId, -1, `מגבלת קצב — ממתין 60 שניות (ניסיון ${attempt}/${MAX_RETRIES})...`);
         await sleep(RATE_LIMIT_WAIT_MS);
         continue;
@@ -555,13 +268,193 @@ async function callClaudeWithRetry(
   throw new Error('נכשל לאחר מספר ניסיונות — מגבלת קצב');
 }
 
-const BATCH_SIZE = 3;
-const BATCH_DELAY_MS = 15000;
+/** Get video duration in seconds using ffprobe */
+function getVideoDuration(videoPath: string): number {
+  const durationStr = execFileSync(FFPROBE, [
+    '-v', 'error', '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1', videoPath
+  ], { encoding: 'utf-8', timeout: 30000 }).trim();
+  return parseFloat(durationStr);
+}
 
-/** Send a single batch of frames to Claude Vision API with retry on rate limit */
-async function analyzeBatch(
+/** Format seconds as human-readable "M:SS" (e.g. 140 → "2:20") */
+function formatTimestampHuman(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// ============================================================
+// EVENT-BASED DETECTION
+// ============================================================
+
+interface DetectedEvent {
+  timestamp: number; // seconds into video
+  source: 'score' | 'motion';
+}
+
+/** METHOD 1: Score change detection via scoreboard pixel diff */
+function detectScoreChanges(videoPath: string, duration: number): DetectedEvent[] {
+  console.log('\n🔍 METHOD 1: Score change detection...');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-score-'));
+  const outPattern = path.join(tmpDir, 'sb_%04d.jpg');
+
+  try {
+    // Extract 1fps scoreboard crops (top 15% of frame)
+    execFileSync(FFMPEG, [
+      '-i', videoPath,
+      '-vf', 'crop=iw:ih*0.15:0:0,fps=1',
+      '-q:v', '5', outPattern, '-y'
+    ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
+  } catch (err: any) {
+    console.log(`   ⚠️ Scoreboard extraction failed: ${err.message}`);
+    return [];
+  }
+
+  const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort();
+  console.log(`   📸 Extracted ${files.length} scoreboard frames`);
+
+  if (files.length < 2) {
+    files.forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch {} });
+    return [];
+  }
+
+  const events: DetectedEvent[] = [];
+  let prevBuf: Buffer | null = null;
+
+  for (let i = 0; i < files.length; i++) {
+    const filePath = path.join(tmpDir, files[i]);
+    const curBuf = fs.readFileSync(filePath);
+
+    if (prevBuf) {
+      // Compare file sizes as a fast proxy for pixel difference
+      // Significant scoreboard changes alter JPEG compression substantially
+      const sizeDiff = Math.abs(curBuf.length - prevBuf.length);
+      const avgSize = (curBuf.length + prevBuf.length) / 2;
+      const diffPct = sizeDiff / avgSize;
+
+      if (diffPct > 0.05) { // >5% size change = likely score change
+        events.push({ timestamp: i, source: 'score' }); // i = second in video
+      }
+    }
+    prevBuf = curBuf;
+  }
+
+  // Cleanup
+  files.forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch {} });
+  try { fs.rmdirSync(tmpDir); } catch {}
+
+  console.log(`   ✅ Detected ${events.length} score change events`);
+  return events;
+}
+
+/** METHOD 2: Motion burst detection via ffmpeg scene detection */
+function detectMotionBursts(videoPath: string): DetectedEvent[] {
+  console.log('\n🔍 METHOD 2: Motion burst detection...');
+
+  try {
+    const output = execFileSync(FFMPEG, [
+      '-i', videoPath,
+      '-vf', "select='gt(scene,0.4)',showinfo",
+      '-vsync', 'vfr',
+      '-f', 'null', '-'
+    ], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300000 });
+
+    // Parse pts_time from stderr (ffmpeg writes showinfo to stderr)
+    // But execFileSync merges or may not capture stderr well, so try stdout too
+    const allOutput = output || '';
+    const events: DetectedEvent[] = [];
+    const ptsRegex = /pts_time:\s*([\d.]+)/g;
+    let match;
+    while ((match = ptsRegex.exec(allOutput)) !== null) {
+      events.push({ timestamp: Math.floor(parseFloat(match[1])), source: 'motion' });
+    }
+
+    console.log(`   ✅ Detected ${events.length} motion burst events`);
+    return events;
+  } catch (err: any) {
+    // ffmpeg scene detection writes to stderr; capture it from the error
+    const stderr = err.stderr || '';
+    const events: DetectedEvent[] = [];
+    const ptsRegex = /pts_time:\s*([\d.]+)/g;
+    let match;
+    while ((match = ptsRegex.exec(stderr)) !== null) {
+      events.push({ timestamp: Math.floor(parseFloat(match[1])), source: 'motion' });
+    }
+
+    if (events.length > 0) {
+      console.log(`   ✅ Detected ${events.length} motion burst events (from stderr)`);
+      return events;
+    }
+
+    console.log(`   ⚠️ Motion detection failed: ${err.message}`);
+    return [];
+  }
+}
+
+/** Merge events from both methods, deduplicate within 10s, sort, and cap */
+function mergeAndCapEvents(scoreEvents: DetectedEvent[], motionEvents: DetectedEvent[], duration: number): number[] {
+  // Priority: score changes first, then motion bursts
+  const allEvents = [...scoreEvents, ...motionEvents];
+  allEvents.sort((a, b) => {
+    if (a.source === 'score' && b.source === 'motion') return -1;
+    if (a.source === 'motion' && b.source === 'score') return 1;
+    return a.timestamp - b.timestamp;
+  });
+
+  // Deduplicate: remove events within 10s of an already-kept event
+  const kept: number[] = [];
+  for (const evt of allEvents) {
+    const ts = evt.timestamp;
+    if (ts < 2 || ts > duration - 5) continue; // skip very start/end
+    const tooClose = kept.some(k => Math.abs(k - ts) < 10);
+    if (!tooClose) kept.push(ts);
+  }
+
+  // Sort by time
+  kept.sort((a, b) => a - b);
+
+  // Cap at MAX_CLIPS
+  if (kept.length > MAX_CLIPS) {
+    console.log(`   ⚠️ ${kept.length} events detected, capping to ${MAX_CLIPS}`);
+    // Keep score-priority order: the first MAX_CLIPS were already priority-sorted
+    return kept.slice(0, MAX_CLIPS);
+  }
+
+  return kept;
+}
+
+/** Extract 5 frames from a 10s clip around an event timestamp */
+function extractClipFrames(videoPath: string, eventTime: number, clipDir: string): string[] {
+  const startTime = Math.max(0, eventTime - 2);
+  const frames: string[] = [];
+  // Extract 5 frames at 0s, 2s, 4s, 6s, 8s into the clip
+  const offsets = [0, 2, 4, 6, 8];
+
+  for (const offset of offsets) {
+    const ts = startTime + offset;
+    const outPath = path.join(clipDir, `event_${eventTime}_frame_${offset}.jpg`);
+    try {
+      execFileSync(FFMPEG, [
+        '-ss', String(ts), '-i', videoPath,
+        '-frames:v', '1', '-q:v', '2', outPath, '-y'
+      ], { stdio: 'pipe', timeout: 15000 });
+      if (fs.existsSync(outPath)) frames.push(outPath);
+    } catch {}
+  }
+
+  return frames;
+}
+
+// ============================================================
+// PER-CLIP ANALYSIS
+// ============================================================
+
+/** Analyze a single clip (5 frames around one event) */
+async function analyzeClip(
   client: Anthropic,
-  batchFrames: string[],
+  clipFrames: string[],
+  eventTime: number,
   context: string,
   focus: string,
   roster?: RosterPlayer[],
@@ -569,14 +462,15 @@ async function analyzeBatch(
   awayTeam?: string,
   jobId?: string,
 ): Promise<AnalysisResult> {
+  const humanTime = formatTimestampHuman(eventTime);
+  const startTime = Math.max(0, eventTime - 2);
+
   const contentBlocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [];
-  batchFrames.forEach((framePath, i) => {
+  const offsets = [0, 2, 4, 6, 8];
+  clipFrames.forEach((framePath, i) => {
     const data = fs.readFileSync(framePath).toString('base64');
-    // Extract seconds from filename: frame_at_000140s.jpg → 140
-    const secMatch = path.basename(framePath, '.jpg').match(/at_(\d+)s/);
-    const secs = secMatch ? parseInt(secMatch[1]) : 0;
-    const humanTime = formatTimestampHuman(secs);
-    contentBlocks.push({ type: 'text' as const, text: `Frame ${i + 1} — taken at ${humanTime} in the video` });
+    const frameTime = formatTimestampHuman(startTime + offsets[i]);
+    contentBlocks.push({ type: 'text' as const, text: `Frame ${i + 1} — ${frameTime}` });
     contentBlocks.push({
       type: 'image' as const,
       source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
@@ -585,12 +479,26 @@ async function analyzeBatch(
 
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
-    text: `פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר'}\n\n**הוראות חובה:**\n- כל מהלך חייב להשתמש בחותמת הזמן המדויקת של הפריים שבו ראית אותו. אל תמציא זמנים בין פריימים.\n- צריך להוציא מינימום 15-20 מהלכים סה"כ.\n- מכל פריים: 2-4 מהלכים שונים. תיאור מפורט: מה קרה, שחקנים, תוצאה.\n- החזר JSON בלבד.`,
+    text: `You are watching a 10 second basketball sequence.
+This clip was extracted because an important event was detected at exactly ${humanTime} in the video.
+The exact timestamp for this play is ${humanTime}.
+
+Look at the sequence and describe:
+1. What specific play happened
+2. Which team executed it (home team focus)
+3. What was the defensive response
+4. Tactical significance
+
+Use ONLY the timestamp ${humanTime} — do not invent other times.
+Write in Hebrew.
+פוקוס: ${focus}
+הקשר: ${context || 'אין'}
+החזר JSON בלבד.`,
   };
 
   const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 8192,
+    max_tokens: 4096,
     system: buildSystemPrompt(roster, teamName, awayTeam),
     messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
   }, jobId);
@@ -600,182 +508,183 @@ async function analyzeBatch(
     .map((block) => block.text)
     .join('');
 
-  console.log(`   ✅ Batch responded (${text.length} chars)`);
-  console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
+  console.log(`   📊 Clip ${humanTime}: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out tokens`);
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    console.error('   ❌ Raw response:', text.substring(0, 500));
-    throw new Error('לא נמצא JSON בתגובת Claude');
+    console.warn(`   ⚠️ No JSON for clip at ${humanTime}, skipping`);
+    return { game: '', plays: [], insights: [], shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 } };
   }
 
   return JSON.parse(jsonMatch[0]);
 }
 
-/** Send frame files to Claude Vision API in batches of 3 to avoid rate limits */
-export async function analyzeFrames(frames: string[], context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
-  console.log(`\n🤖 [3/4] Sending ${frames.length} frames to Claude Vision in batches of ${BATCH_SIZE}...`);
-  const client = getClient();
+// ============================================================
+// MAIN EVENT-BASED PIPELINE
+// ============================================================
 
-  // Split frames into batches
-  const batches: string[][] = [];
-  for (let i = 0; i < frames.length; i += BATCH_SIZE) {
-    batches.push(frames.slice(i, i + BATCH_SIZE));
+/** Full event-based analysis: detect events → extract clips → analyze each */
+async function analyzeVideoEvents(
+  videoPath: string,
+  context: string,
+  focus: string,
+  roster?: RosterPlayer[],
+  teamName?: string,
+  awayTeam?: string,
+  jobId?: string,
+): Promise<AnalysisResult> {
+  const duration = getVideoDuration(videoPath);
+  console.log(`\n🏀 Event-based analysis: ${(duration / 60).toFixed(1)} min video`);
+
+  // Step 1: Detect events
+  if (jobId) await updateJobProgress(jobId, 15, 'מזהה רגעים חשובים בסרטון...');
+
+  const scoreEvents = detectScoreChanges(videoPath, duration);
+  const motionEvents = detectMotionBursts(videoPath);
+  const eventTimestamps = mergeAndCapEvents(scoreEvents, motionEvents, duration);
+
+  if (eventTimestamps.length === 0) {
+    console.log('   ⚠️ No events detected — falling back to equal interval sampling');
+    if (jobId) await updateJobProgress(jobId, 20, 'לא זוהו רגעים — מחלץ פריימים בפיזור שווה...');
+    // Fallback: 20 equal interval timestamps
+    const step = duration / 21;
+    for (let i = 1; i <= 20; i++) {
+      eventTimestamps.push(Math.floor(step * i));
+    }
   }
 
-  console.log(`   📦 ${batches.length} batches total`);
+  console.log(`\n📋 ${eventTimestamps.length} events to analyze`);
+  if (jobId) await updateJobProgress(jobId, 25, `נמצאו ${eventTimestamps.length} רגעים — מנתח...`);
+
+  // Step 2: Extract clip frames and analyze each event
+  const client = getClient();
+  const clipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-clips-'));
 
   const allPlays: AnalysisResult['plays'] = [];
   const allInsights: AnalysisResult['insights'] = [];
   let lastShotChart: AnalysisResult['shotChart'] = { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 };
   let gameSummary = '';
 
-  for (let b = 0; b < batches.length; b++) {
-    const batch = batches[b];
-    const batchNum = b + 1;
+  for (let i = 0; i < eventTimestamps.length; i++) {
+    const eventTime = eventTimestamps[i];
+    const humanTime = formatTimestampHuman(eventTime);
+    const clipNum = i + 1;
 
-    // Progress: scale from 50% to 90% across batches
-    const progressPct = Math.round(50 + (batchNum / batches.length) * 40);
-    const progressMsg = `מעבד קבוצת פריימים ${batchNum} מתוך ${batches.length}...`;
-    console.log(`   📡 Batch ${batchNum}/${batches.length}: ${batch.length} frames`);
-    if (jobId) await updateJobProgress(jobId, progressPct, progressMsg);
+    const progressPct = Math.round(30 + (clipNum / eventTimestamps.length) * 60);
+    if (jobId) await updateJobProgress(jobId, progressPct, `מנתח רגע ${clipNum} מתוך ${eventTimestamps.length} — ${humanTime}`);
+    console.log(`   📡 Clip ${clipNum}/${eventTimestamps.length}: event at ${humanTime}`);
 
-    const batchResult = await analyzeBatch(client, batch, context, focus, roster, teamName, awayTeam, jobId);
+    // Extract 5 frames for this clip
+    const clipFrames = extractClipFrames(videoPath, eventTime, clipDir);
+    if (clipFrames.length === 0) {
+      console.log(`   ⚠️ No frames extracted for event at ${humanTime}, skipping`);
+      continue;
+    }
 
-    if (batchResult.plays) allPlays.push(...batchResult.plays);
-    if (batchResult.insights) allInsights.push(...batchResult.insights);
-    if (batchResult.shotChart) lastShotChart = batchResult.shotChart;
-    if (batchResult.game) gameSummary = batchResult.game;
+    // Analyze the clip
+    const clipResult = await analyzeClip(client, clipFrames, eventTime, context, focus, roster, teamName, awayTeam, jobId);
 
-    console.log(`   ✅ Batch ${batchNum}: ${batchResult.plays?.length || 0} plays`);
+    if (clipResult.plays) allPlays.push(...clipResult.plays);
+    if (clipResult.insights) allInsights.push(...clipResult.insights);
+    if (clipResult.shotChart) lastShotChart = clipResult.shotChart;
+    if (clipResult.game) gameSummary = clipResult.game;
 
-    // Wait between batches to stay under rate limit
-    if (b < batches.length - 1) {
-      const waitMsg = `מעבד קבוצת פריימים ${batchNum} מתוך ${batches.length} — ממתין...`;
-      if (jobId) await updateJobProgress(jobId, progressPct, waitMsg);
-      console.log(`   ⏳ Waiting ${BATCH_DELAY_MS / 1000}s before next batch...`);
-      await sleep(BATCH_DELAY_MS);
+    console.log(`   ✅ Clip ${clipNum}: ${clipResult.plays?.length || 0} plays`);
+
+    // Cleanup clip frames
+    clipFrames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+
+    // Wait between clips to avoid rate limit
+    if (i < eventTimestamps.length - 1) {
+      console.log(`   ⏳ Waiting ${CLIP_DELAY_MS / 1000}s before next clip...`);
+      await sleep(CLIP_DELAY_MS);
     }
   }
 
+  // Cleanup
+  try { fs.rmdirSync(clipDir); } catch {}
+
   const result: AnalysisResult = {
-    game: gameSummary,
+    game: gameSummary || 'ניתוח משחק כדורסל',
     plays: allPlays,
     insights: allInsights,
     shotChart: lastShotChart,
   };
 
-  console.log(`   ✅ All batches done: ${result.plays.length} plays, ${result.insights.length} insights`);
+  console.log(`   ✅ All clips done: ${result.plays.length} plays, ${result.insights.length} insights`);
   if (jobId) await updateJobProgress(jobId, 95, `נמצאו ${result.plays.length} מהלכים — שומר...`);
   return result;
 }
 
 // ============================================================
-// GOOGLE DRIVE MODE: yt-dlp download → ffmpeg → Claude Vision
+// PUBLIC API
 // ============================================================
 
-/** Download video from Google Drive using yt-dlp */
-function downloadGoogleDrive(url: string): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-gdrive-'));
-  const outTemplate = path.join(tmpDir, 'video.%(ext)s');
-  console.log(`\n📥 [1/4] Downloading Google Drive video: ${url}`);
-
-  const ytdlp = fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp';
-  const cmd = `${ytdlp} --no-check-certificates --no-playlist -o "${outTemplate}" "${url}"`;
-  console.log(`   CMD: ${cmd}`);
-
-  try {
-    const output = execSync(cmd, { encoding: 'utf-8', timeout: 300000 });
-    console.log(`   yt-dlp stdout:\n${output}`);
-  } catch (err: any) {
-    console.error(`   ❌ yt-dlp FAILED`);
-    console.error(`   CMD: ${cmd}`);
-    console.error(`   EXIT CODE: ${err.status}`);
-    console.error(`   STDOUT: ${err.stdout || '(empty)'}`);
-    console.error(`   STDERR: ${err.stderr || '(empty)'}`);
-    throw new Error(`yt-dlp failed (exit ${err.status}): ${err.stderr || err.message}`);
-  }
-
-  const files = fs.readdirSync(tmpDir);
-  console.log(`   📂 Files in tmpDir: ${files.join(', ')}`);
-  if (files.length === 0) throw new Error('yt-dlp produced no output file from Google Drive');
-  const videoFile = files[0];
-  const videoPath = path.join(tmpDir, videoFile);
-
-  const stat = fs.statSync(videoPath);
-  console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${videoPath}`);
-  return videoPath;
-}
-
-/** Analyze Google Drive video: yt-dlp → ffmpeg → Claude Vision */
+/** Analyze Google Drive video: download → detect events → analyze clips */
 export async function analyzeGoogleDrive(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
-  console.log('\n🏀 ========== GOOGLE DRIVE ANALYSIS PIPELINE ==========');
-  console.log(`   URL: ${url}`);
-  console.log(`   Focus: ${focus}`);
-  console.log(`   Context: ${context || '(none)'}`);
-
+  console.log('\n🏀 ========== GOOGLE DRIVE ANALYSIS ==========');
   if (jobId) await updateJobProgress(jobId, 5, 'מוריד סרטון מ-Google Drive...');
   const videoPath = downloadGoogleDrive(url);
-  if (jobId) await updateJobProgress(jobId, 20, 'הורדה הושלמה — מחלץ פריימים...');
-  const frames = await extractFramesSmart(videoPath);
-  if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
-  if (jobId) await updateJobProgress(jobId, 40, `חולצו ${frames.length} פריימים — שולח ל-Claude...`);
+  if (jobId) await updateJobProgress(jobId, 10, 'הורדה הושלמה — מזהה רגעים...');
 
-  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam, jobId);
+  const result = await analyzeVideoEvents(videoPath, context, focus, roster, teamName, awayTeam, jobId);
 
-  console.log('\n🧹 Cleaning up temp files...');
-  frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   try { fs.unlinkSync(videoPath); } catch {}
-  console.log('   ✅ Cleanup done');
-  console.log('🏀 ========== GOOGLE DRIVE PIPELINE COMPLETE ==========\n');
-
+  console.log('🏀 ========== GOOGLE DRIVE COMPLETE ==========\n');
   return result;
 }
 
-// ============================================================
-// PUBLIC API: auto-selects local or cloud mode
-// ============================================================
-
-/** Analyze YouTube — full pipeline: yt-dlp → ffmpeg → Claude Vision */
+/** Analyze YouTube — full pipeline: download → detect events → analyze clips */
 export async function analyzeYouTube(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
-  console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
-  console.log(`   URL: ${url}`);
-  console.log(`   Focus: ${focus}`);
-  console.log(`   Context: ${context || '(none)'}`);
-
+  console.log('\n🏀 ========== YOUTUBE ANALYSIS ==========');
   if (jobId) await updateJobProgress(jobId, 5, 'מוריד סרטון מ-YouTube...');
   const videoPath = downloadYouTube(url);
-  if (jobId) await updateJobProgress(jobId, 20, 'הורדה הושלמה — מחלץ פריימים...');
-  const frames = await extractFramesSmart(videoPath);
-  if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
-  if (jobId) await updateJobProgress(jobId, 40, `חולצו ${frames.length} פריימים — שולח ל-Claude...`);
+  if (jobId) await updateJobProgress(jobId, 10, 'הורדה הושלמה — מזהה רגעים...');
 
-  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam, jobId);
+  const result = await analyzeVideoEvents(videoPath, context, focus, roster, teamName, awayTeam, jobId);
 
-  console.log('\n🧹 Cleaning up temp files...');
-  frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   try { fs.unlinkSync(videoPath); } catch {}
-  console.log('   ✅ Cleanup done');
-  console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
-
+  console.log('🏀 ========== YOUTUBE COMPLETE ==========\n');
   return result;
 }
 
-/** Analyze uploaded video file (local only) */
+/** Analyze uploaded video file */
 export async function analyzeVideo(videoPath: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
-  console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
-  if (jobId) await updateJobProgress(jobId, 10, 'מחלץ פריימים מהסרטון...');
-  const frames = await extractFramesSmart(videoPath);
-  if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
-  if (jobId) await updateJobProgress(jobId, 40, `חולצו ${frames.length} פריימים — שולח ל-Claude...`);
-  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam, jobId);
-  frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
-  console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
+  console.log('\n🏀 ========== VIDEO ANALYSIS ==========');
+  if (jobId) await updateJobProgress(jobId, 10, 'מזהה רגעים חשובים בסרטון...');
+
+  const result = await analyzeVideoEvents(videoPath, context, focus, roster, teamName, awayTeam, jobId);
+
+  console.log('🏀 ========== VIDEO COMPLETE ==========\n');
   return result;
 }
 
-/** Analyze a single image file */
+/** Analyze a single image file (no event detection — just send to Claude) */
 export async function analyzeImage(imagePath: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n🖼️ Analyzing single image...');
-  return analyzeFrames([imagePath], context, focus, roster, teamName, awayTeam, jobId);
+  const client = getClient();
+  const data = fs.readFileSync(imagePath).toString('base64');
+
+  const response = await callClaudeWithRetry(client, {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 8192,
+    system: buildSystemPrompt(roster, teamName, awayTeam),
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text' as const, text: `Frame 1 — single image` },
+        { type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data } },
+        { type: 'text' as const, text: `פוקוס: ${focus}\nהקשר: ${context || 'אין'}\nנתח את התמונה והחזר JSON.` },
+      ],
+    }],
+  }, jobId);
+
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('');
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('לא נמצא JSON בתגובת Claude');
+  return JSON.parse(jsonMatch[0]);
 }
