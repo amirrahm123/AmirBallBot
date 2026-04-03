@@ -536,6 +536,7 @@ function showAnalysisError(msg) {
   document.getElementById('analysis-processing').classList.add('hidden');
   document.getElementById('analysis-empty').classList.remove('hidden');
   document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
+  resetAnalyzeButton();
 }
 
 async function pollJob(jobId) {
@@ -551,6 +552,7 @@ async function pollJob(jobId) {
       activeJobPoll = null;
       updateProgress(100, 'הניתוח הושלם!');
       currentAnalysis = job.result;
+      resetAnalyzeButton();
       await new Promise(r => setTimeout(r, 600));
       renderAnalysis(job.result);
     } else if (job.status === 'error') {
@@ -564,7 +566,21 @@ async function pollJob(jobId) {
   }
 }
 
+function resetAnalyzeButton() {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = false;
+  btn.textContent = '🔬 התחל ניתוח';
+}
+
 document.getElementById('analyze-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('analyze-btn');
+
+  // Block if analysis already running
+  if (activeJobPoll) {
+    document.getElementById('upload-status').textContent = '⚠️ ניתוח כבר רץ — המתן לסיום לפני שמתחיל ניתוח חדש';
+    return;
+  }
+
   const file = fileInput.files[0];
   const ytUrl = document.getElementById('youtube-url').value.trim();
   const context = document.getElementById('game-context').value.trim();
@@ -574,6 +590,10 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     document.getElementById('upload-status').textContent = '⚠️ בחר סרטון או הכנס קישור YouTube';
     return;
   }
+
+  // Disable button immediately
+  btn.disabled = true;
+  btn.textContent = 'ניתוח בתהליך...';
 
   // Switch to analysis screen
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
