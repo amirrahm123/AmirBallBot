@@ -24,76 +24,17 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   ? path.join(BIN_DIR, 'ffprobe.exe')
   : 'ffprobe';
 
-const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי ישראלי ברמה הגבוהה ביותר. נתח את התמונות האלה ממשחק כדורסל והחזר JSON בלבד:
-{
-  "game": "תיאור קצר של המשחק",
-  "plays": [{ "time": "00:00", "type": "Offense|Defense|Transition", "label": "שם המהלך", "note": "הערה מפורטת למאמן", "players": ["#5", "#10"] }],
-  "insights": [{ "type": "good|warn|bad", "title": "כותרת", "body": "פירוט" }],
-  "shotChart": { "paint": 45, "midRange": 30, "corner3": 35, "aboveBreak3": 28, "pullUp": 20 }
-}
+const SYSTEM_PROMPT = `אתה אנליסט כדורסל. נתח פריימים ממשחק והחזר JSON בלבד:
+{"game":"תיאור","plays":[{"time":"00:00","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["#5"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
 
-===== כמות מהלכים — חובה =====
-חובה להחזיר מינימום 25-35 מהלכים בודדים.
-עבור משחק של 90 דקות עם 20+ פריימים, כל פריים צריך להניב 1-3 מהלכים.
-אל תדלג על אף פריים! נתח כל פריים לעומק.
-חפש את כל אלה בכל פריים:
-- פיק אנד רול (שתי הקבוצות)
-- משחקי פוסט-אפ
-- משחקי אחד על אחד (Isolation)
-- רוטציות הגנתיות וכשלים
-- מעברים מהירים (Fast break / Transition)
-- משחקי קו צד וקו קצה
-- מצבי עצירת משחק (טיימאוט, זריקות חופשיות)
-- חטיפות כדור ואיבודים
-- מסכים וחתכים
-- שינויי הגנת אזור
-- טעויות הגנתיות אישיות
-- שינויי מומנטום בין רבעים
-אם יש לך פחות מ-25 מהלכים, אתה לא מנתח מספיק לעומק!
-
-===== דיוק בפאולים וחסימות =====
-היה מדויק מאוד במצבי מגע:
-- בלוק (חסימה) = המגן חוסם את הכדור בצורה חוקית בלי לפגוע בזרוע
-- עבירה (פאול) = המגן פוגע בזרוע או בגוף של הזורק
-- הסתכל על מיקום יד המגן — אם פוגע בזרוע = פאול, אם פוגע בכדור = בלוק
-אל תבלבל בין השניים!
-
-===== התעלם משידורים חוזרים =====
-דלג על כל פריים שמראה:
-- שידור חוזר בהילוך איטי (Slow motion replay) — ניתן לזהות לפי גרפיקת replay
-- התכנסות טיימאוט (שחקנים עומדים במעגל)
-- מסך תוצאות בלבד (Scoreboard only)
-- צילומי קהל
-- קלוז-אפ על מאמן ללא פעולת משחק
-- הפסקות פרסומת
-נתח רק פריימים שמציגים פעולת משחק חיה מזווית המצלמה הראשית!
-
-===== התאם את תיאור המהלך לפריים בפועל =====
-חשוב: תאר אך ורק את מה שאתה רואה ממש בפריים הספציפי הזה.
-אל תתאר מה לדעתך קרה לפני או אחרי הפריים.
-אל תמציא מהלכים על סמך הקשר כללי של המשחק.
-אם אתה רואה שחקן מחזיק את הכדור — תאר את זה.
-אם אתה רואה עמדה הגנתית — תאר את זה.
-אם הפריים לא ברור — דלג עליו, אל תנחש.
-
-===== זיהוי קבוצות לפי צבע חולצות =====
-השתמש בשמות הקבוצות כדי לזהות צבעי חולצות. קבוצות ישראליות מוכרות:
-- הפועל תל אביב = חולצות אדומות
-- מכבי תל אביב = חולצות צהובות
-- הפועל ירושלים = חולצות שחורות
-- מכבי חיפה = חולצות ירוקות
-- הפועל גלים = חולצות כחולות
-- הפועל חיפה = חולצות אדומות
-- מכבי רעננה = חולצות כחולות
-- הפועל באר שבע = חולצות אדומות
-
-לקבוצות לא מוכרות: המאמן יציין צבע בסוגריים, לדוגמה: "קבוצה X (אדום)".
-אם לא צוין צבע לקבוצה לא מוכרת, נסה לזהות את צבע החולצה מהפריימים.
-
-בכל מהלך, ציין בבירור: שחקן ביתי או שחקן אורח עבור כל שחקן שמוזכר.
-
-אל תסכם! תן הערה נפרדת ומפורטת לכל מהלך בודד.
-כל הטקסט בעברית.`;
+כללים:
+- חלץ 1-3 מהלכים מכל פריים. תאר רק מה שנראה בפריים, אל תנחש.
+- דלג על: שידורים חוזרים, טיימאאוטים, קהל, פרסומת, קלוז-אפ על מאמן.
+- בלוק=חסימת כדור חוקית. פאול=פגיעה בזרוע/גוף. אל תבלבל.
+- אין לציין או לנסות לזהות מספרי גופיות.
+- זיהוי קבוצות לפי צבע: הפועל ת"א=אדום, מכבי ת"א=צהוב, הפועל י-ם=שחור, מכבי חיפה=ירוק, הפועל חיפה=אדום, מכבי רעננה=כחול.
+- תאריך הזמן בשדה time חייב להיות MM:SS (למשל 03:00), לא 00h03m00s.
+- כל טקסט בעברית. הערה נפרדת לכל מהלך.`;
 
 export interface AnalysisResult {
   game: string;
@@ -118,24 +59,10 @@ function buildSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?
     const home = teamName || 'הקבוצה שלנו';
     const away = awayTeam || 'היריב';
     const rosterText = roster.map(p => `#${p.number} ${p.name} - ${p.position}`).join('\n');
-    prompt += `\n\n===== מיקוד בקבוצה — חובה מוחלטת =====
-קבוצת בית: ${home}
-קבוצת חוץ: ${away}
-
-יש לך את הרוסטר המלא של ${home}.
-התפקיד שלך הוא להיות האנליסט האישי של ${home}.
-נתח אך ורק את שחקני ${home}.
-לעולם אל תכתוב מהלך על שחקן של ${away}.
-כש-${away} מבקיע: כתוב "הספגנו סל" — לא מי הבקיע.
-כש-${away} חוטף כדור: כתוב "איבדנו כדור" — לא מי חטף.
-כל הערת מהלך חייבת להיות על מה ש-${home} עשתה — טוב או רע.
-אם פריים מראה רק שחקני ${away} ללא מעורבות ${home} — דלג על הפריים.
-
-===== שימוש ברוסטר =====
-הרוסטר שלהלן הוא של ${home}.
-השתמש אך ורק ברוסטר שסופק כדי לזהות שחקנים — אל תנסה לקרוא מספרי גופיות מהפריימים.
-אם אינך בטוח מי השחקן — כתוב "שחקן ${home}".
-
+    prompt += `\nבית: ${home} | חוץ: ${away}
+נתח רק את ${home}. אם ${away} מבקיע כתוב "הספגנו סל". אם לא בטוח מי השחקן כתוב "שחקן ${home}".
+אין לציין מספרי גופיות.
+בכל מהלך, time חייב להיות בפורמט MM:SS (למשל 03:00).
 רוסטר ${home}:
 ${rosterText}`;
   }
@@ -581,7 +508,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 15000;
 
-/** Send a single batch of frames to Claude Vision API */
+const MAX_RETRIES = 3;
+const RATE_LIMIT_WAIT_MS = 60000;
+
+/** Send a single batch of frames to Claude Vision API with retry on rate limit */
 async function analyzeBatch(
   client: Anthropic,
   batchFrames: string[],
@@ -590,6 +520,7 @@ async function analyzeBatch(
   roster?: RosterPlayer[],
   teamName?: string,
   awayTeam?: string,
+  jobId?: string,
 ): Promise<AnalysisResult> {
   const contentBlocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [];
   batchFrames.forEach((framePath) => {
@@ -604,31 +535,45 @@ async function analyzeBatch(
 
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
-    text: `פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nשם הקובץ של כל פריים הוא חותמת הזמן המדויקת שלו בסרטון (לדוגמה frame_00h04m46s = דקה 4:46).\nהשתמש אך ורק בחותמת הזמן משם הקובץ בשדה "time" של כל מהלך — אל תנחש או תעריך זמנים.\n\nנתח את הפריימים האלה מהמשחק והחזר JSON.`,
+    text: `פוקוס: ${focus}\nהקשר: ${context || 'אין'}\n\nשם הקובץ = חותמת זמן (frame_00h04m46s = 4:46). השתמש בו לשדה "time" בפורמט MM:SS (למשל 04:46). החזר JSON בגוף בלבד.`,
   };
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 8192,
-    system: buildSystemPrompt(roster, teamName, awayTeam),
-    messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
-  });
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8192,
+        system: buildSystemPrompt(roster, teamName, awayTeam),
+        messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
+      });
 
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('');
+      const text = response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
 
-  console.log(`   ✅ Batch responded (${text.length} chars)`);
-  console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
+      console.log(`   ✅ Batch responded (${text.length} chars)`);
+      console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    console.error('   ❌ Raw response:', text.substring(0, 500));
-    throw new Error('לא נמצא JSON בתגובת Claude');
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('   ❌ Raw response:', text.substring(0, 500));
+        throw new Error('לא נמצא JSON בתגובת Claude');
+      }
+
+      return JSON.parse(jsonMatch[0]);
+    } catch (err: any) {
+      const isRateLimit = err?.status === 429 || err?.error?.type === 'rate_limit_error' || (err?.message || '').includes('rate');
+      if (isRateLimit && attempt < MAX_RETRIES) {
+        console.log(`   ⚠️ Rate limit hit (attempt ${attempt}/${MAX_RETRIES}) — waiting ${RATE_LIMIT_WAIT_MS / 1000}s...`);
+        if (jobId) await updateJobProgress(jobId, -1, `מגבלת קצב — ממתין 60 שניות (ניסיון ${attempt}/${MAX_RETRIES})...`);
+        await sleep(RATE_LIMIT_WAIT_MS);
+        continue;
+      }
+      throw err;
+    }
   }
-
-  return JSON.parse(jsonMatch[0]);
+  throw new Error('נכשל לאחר מספר ניסיונות — מגבלת קצב');
 }
 
 /** Send frame files to Claude Vision API in batches of 3 to avoid rate limits */
@@ -659,7 +604,7 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
     console.log(`   📡 Batch ${batchNum}/${batches.length}: ${batch.length} frames`);
     if (jobId) await updateJobProgress(jobId, progressPct, progressMsg);
 
-    const batchResult = await analyzeBatch(client, batch, context, focus, roster, teamName, awayTeam);
+    const batchResult = await analyzeBatch(client, batch, context, focus, roster, teamName, awayTeam, jobId);
 
     if (batchResult.plays) allPlays.push(...batchResult.plays);
     if (batchResult.insights) allInsights.push(...batchResult.insights);
