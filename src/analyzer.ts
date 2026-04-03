@@ -53,6 +53,27 @@ RULES:
 - Never write a timestamp you were not given
 - All output must be in Hebrew
 
+NO INVENTED PLAYS:
+- Describe ONLY what you literally see in the frames
+- Do not invent what happened before or after the frames
+- If you see a jump ball → write "כדור חופשי" not a story about aggressive defense
+- If you see players running → write exactly what you see
+- Never write a narrative that goes beyond the visible frames
+
+SPECIFIC PLAYER ACTIONS:
+- If a specific player is visible performing an action, describe exactly what THAT player did
+- Did they drive coast to coast? Write it
+- Did they hit a pull-up jumper? Write it
+- Did they get a steal? Write the steal, who they stole from, and what happened immediately after
+- Always name the player and their exact action
+
+USE THESE EXACT HEBREW BASKETBALL TERMS:
+coast to coast = קוסט טו קוסט | pull-up jumper = ג'אמפשוט בעצירה | pick and roll = פיק אנד רול
+fast break = מתפרצת | steal = חטיפת כדור | jump ball = כדור חופשי | turnover = איבוד כדור
+transition defense = הגנת מעבר | help defense = הגנת סיוע | drive = חדירה לסל
+kick out = פאס החוצה | post up = גב לסל | iso = אחד על אחד | double team = דאבל טים
+screen = פיק / חסימה | rebound = ריבאונד | block = בלוק | charge = פאול תוקף
+
 DEFENSIVE NOTES — strict rules:
 - ONLY write a defensive note if you clearly see a defensive action in the frames
 - The player being defended and the defender must both be visible
