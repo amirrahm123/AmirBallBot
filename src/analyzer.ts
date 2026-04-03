@@ -493,6 +493,20 @@ function extractClipFrames(videoPath: string, eventTime: number, clipDir: string
   return frames;
 }
 
+/** Post-process a frame for Claude Vision: crop court area + enhance contrast/saturation */
+function processFrameForVision(framePath: string): string {
+  const processedPath = framePath.replace('.jpg', '_processed.jpg');
+  try {
+    execFileSync(FFMPEG, [
+      '-i', framePath,
+      '-vf', 'crop=iw:ih*0.75:0:ih*0.12,eq=contrast=1.3:brightness=0.05:saturation=1.4',
+      '-q:v', '2', processedPath, '-y'
+    ], { stdio: 'pipe', timeout: 10000 });
+    if (fs.existsSync(processedPath)) return processedPath;
+  } catch {}
+  return framePath; // fallback to original if processing fails
+}
+
 // ============================================================
 // PER-CLIP ANALYSIS
 // ============================================================
@@ -513,8 +527,11 @@ async function analyzeClip(
   const startTime = Math.max(0, eventTime - CLIP_PRE_EVENT);
 
   const contentBlocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [];
+  const processedPaths: string[] = [];
   clipFrames.forEach((framePath, i) => {
-    const data = fs.readFileSync(framePath).toString('base64');
+    const visionPath = processFrameForVision(framePath);
+    if (visionPath !== framePath) processedPaths.push(visionPath);
+    const data = fs.readFileSync(visionPath).toString('base64');
     const frameTime = formatTimestampHuman(startTime + CLIP_OFFSETS[i]);
     const label = FRAME_LABELS[i] || '';
     contentBlocks.push({ type: 'text' as const, text: `Frame ${i + 1} — ${frameTime} — ${label}` });
@@ -558,6 +575,9 @@ If no clear play with visible outcome → return {"game":"","plays":[],"insights
     .join('');
 
   console.log(`   📊 Clip ${humanTime}: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out tokens`);
+
+  // Cleanup processed frames
+  processedPaths.forEach(f => { try { fs.unlinkSync(f); } catch {} });
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
