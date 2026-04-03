@@ -281,12 +281,12 @@ textarea{resize:vertical;min-height:80px}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-secondary btn-sm" onclick="addRosterRow()">+ הוסף שחקן</button>
             <button class="btn btn-secondary btn-sm" onclick="loadExampleRoster()">טען דוגמה — מכבי תל אביב</button>
-            <button class="btn btn-secondary btn-sm" onclick="toggleJsonImport()">ייבוא JSON</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleJsonImport()">ייבוא טקסט</button>
             <button class="btn btn-secondary btn-sm" onclick="exportRosterJson()">ייצוא JSON</button>
             <button class="btn btn-primary btn-sm" onclick="saveRoster()">💾 שמור רוסטר</button>
           </div>
           <div id="json-import-section" class="hidden" style="margin-top:12px">
-            <textarea id="json-import-input" placeholder='[{"name":"שם","number":5,"position":"PG"}]' style="direction:ltr;text-align:left;min-height:100px;font-family:'DM Mono',monospace;font-size:12px"></textarea>
+            <textarea id="json-import-input" placeholder="הדבק רשימת שחקנים בכל פורמט, לדוגמה:&#10;8 Jalen Williams SG&#10;3 Jared McCain SG&#10;44 Nikola Topic PG" style="direction:ltr;text-align:left;min-height:100px;font-family:'DM Mono',monospace;font-size:12px"></textarea>
             <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
               <button class="btn btn-primary btn-sm" onclick="importRosterJson()">ייבוא</button>
               <span id="json-import-error" style="font-size:12px;color:var(--red);display:none"></span>
@@ -997,29 +997,48 @@ function toggleJsonImport() {
   document.getElementById('json-import-error').style.display = 'none';
 }
 
-function importRosterJson() {
+async function importRosterJson() {
   const raw = document.getElementById('json-import-input').value.trim();
   const errEl = document.getElementById('json-import-error');
   errEl.style.display = 'none';
+  if (!raw) { errEl.textContent = 'הכנס טקסט לייבוא'; errEl.style.display = 'inline'; return; }
+
+  // First try direct JSON parse
   try {
     const players = JSON.parse(raw);
-    if (!Array.isArray(players)) throw new Error('not array');
-    if (players.length === 0) throw new Error('empty');
-    // Validate each player has name and number
-    players.forEach(p => {
-      if (!p.name || p.number == null) throw new Error('missing fields');
+    if (Array.isArray(players) && players.length > 0 && players[0].name) {
+      document.getElementById('roster-players').innerHTML = '';
+      players.forEach(p => addRosterRow(p.number, p.name, POS_MAP[p.position] || p.position || ''));
+      document.getElementById('json-import-section').classList.add('hidden');
+      document.getElementById('json-import-input').value = '';
+      return;
+    }
+  } catch {}
+
+  // Not valid JSON — send to Claude for parsing
+  errEl.textContent = 'מעבד טקסט...';
+  errEl.style.display = 'inline';
+  errEl.style.color = 'var(--text3)';
+
+  try {
+    const res = await fetch(API + '/api/roster/parse', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text: raw })
     });
-    // Clear existing rows and populate
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.players || data.players.length === 0) throw new Error('לא נמצאו שחקנים');
+
     document.getElementById('roster-players').innerHTML = '';
-    players.forEach(p => {
-      const pos = POS_MAP[p.position] || p.position || '';
-      addRosterRow(p.number, p.name, pos);
-    });
+    data.players.forEach(p => addRosterRow(p.number, p.name, POS_MAP[p.position] || p.position || ''));
     document.getElementById('json-import-section').classList.add('hidden');
     document.getElementById('json-import-input').value = '';
-    console.log('Imported ' + players.length + ' players from JSON');
+    errEl.style.display = 'none';
+    console.log('Imported ' + data.players.length + ' players from free text');
   } catch (e) {
-    errEl.textContent = 'פורמט JSON שגוי — בדוק את הקובץ';
+    errEl.textContent = e.message || 'שגיאה בפרסור הטקסט — נסה שוב';
+    errEl.style.color = 'var(--red)';
     errEl.style.display = 'inline';
   }
 }
