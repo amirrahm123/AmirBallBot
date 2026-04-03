@@ -4,6 +4,16 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import https from 'https';
+import { Job } from './database';
+
+/** Update job progress in MongoDB */
+export async function updateJobProgress(jobId: string, progress: number, progressMessage: string): Promise<void> {
+  try {
+    await Job.updateOne({ jobId }, { progress, progressMessage, updatedAt: new Date() });
+  } catch (err) {
+    console.warn(`⚠️ Failed to update job ${jobId} progress:`, err);
+  }
+}
 
 // ffmpeg/ffprobe: use local Windows binaries if available, otherwise system-installed (Linux/Railway)
 const BIN_DIR = path.join(__dirname, '..', 'bin');
@@ -206,12 +216,14 @@ async function fetchYouTubeMetadata(url: string): Promise<string> {
 }
 
 /** Vercel-compatible: analyze YouTube via thumbnails */
-export async function analyzeYouTubeCloud(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Promise<AnalysisResult> {
+export async function analyzeYouTubeCloud(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n☁️ ========== CLOUD YOUTUBE ANALYSIS ==========');
   console.log(`   URL: ${url}`);
 
   const videoId = extractVideoId(url);
   if (!videoId) throw new Error('לא הצלחתי לחלץ מזהה סרטון מהקישור');
+
+  if (jobId) await updateJobProgress(jobId, 10, 'מוריד תמונות מ-YouTube...');
 
   // Fetch thumbnails + metadata in parallel
   const [thumbs, metadata] = await Promise.all([
@@ -220,6 +232,8 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
   ]);
 
   if (thumbs.length === 0) throw new Error('לא הצלחתי לטעון תמונות מהסרטון');
+
+  if (jobId) await updateJobProgress(jobId, 30, `נמצאו ${thumbs.length} תמונות — שולח ל-Claude...`);
 
   console.log(`\n🤖 Sending ${thumbs.length} thumbnails to Claude Vision...`);
   const client = getClient();
@@ -241,6 +255,8 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
   });
 
+  if (jobId) await updateJobProgress(jobId, 80, 'מעבד תוצאות...');
+
   const text = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === 'text')
     .map((block) => block.text)
@@ -254,6 +270,7 @@ export async function analyzeYouTubeCloud(url: string, context: string, focus: s
 
   const result: AnalysisResult = JSON.parse(jsonMatch[0]);
   console.log(`   ✅ Parsed: ${result.plays?.length || 0} plays, ${result.insights?.length || 0} insights`);
+  if (jobId) await updateJobProgress(jobId, 95, `נמצאו ${result.plays?.length || 0} מהלכים — שומר...`);
   console.log('☁️ ========== CLOUD ANALYSIS COMPLETE ==========\n');
   return result;
 }
@@ -560,7 +577,7 @@ export function extractFrames(videoPath: string): string[] {
 }
 
 /** Send frame files to Claude Vision API */
-export async function analyzeFrames(frames: string[], context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Promise<AnalysisResult> {
+export async function analyzeFrames(frames: string[], context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log(`\n🤖 [3/4] Sending ${frames.length} frames to Claude Vision...`);
   const client = getClient();
 
@@ -589,6 +606,7 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
   };
 
   console.log(`   📡 Calling Claude claude-sonnet-4-20250514 with ${frames.length} images...`);
+  if (jobId) await updateJobProgress(jobId, 60, `שולח ${frames.length} פריימים ל-Claude לניתוח...`);
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -596,6 +614,8 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
     system: buildSystemPrompt(roster, teamName, awayTeam),
     messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
   });
+
+  if (jobId) await updateJobProgress(jobId, 85, 'מעבד תוצאות...');
 
   const text = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === 'text')
@@ -613,6 +633,7 @@ export async function analyzeFrames(frames: string[], context: string, focus: st
 
   const result: AnalysisResult = JSON.parse(jsonMatch[0]);
   console.log(`   ✅ Parsed: ${result.plays?.length || 0} plays, ${result.insights?.length || 0} insights`);
+  if (jobId) await updateJobProgress(jobId, 95, `נמצאו ${result.plays?.length || 0} מהלכים — שומר...`);
   return result;
 }
 
@@ -654,17 +675,20 @@ function downloadGoogleDrive(url: string): string {
 }
 
 /** Analyze Google Drive video: yt-dlp → ffmpeg → Claude Vision */
-export async function analyzeGoogleDrive(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Promise<AnalysisResult> {
+export async function analyzeGoogleDrive(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== GOOGLE DRIVE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
   console.log(`   Context: ${context || '(none)'}`);
 
+  if (jobId) await updateJobProgress(jobId, 5, 'מוריד סרטון מ-Google Drive...');
   const videoPath = downloadGoogleDrive(url);
+  if (jobId) await updateJobProgress(jobId, 20, 'הורדה הושלמה — מחלץ פריימים...');
   const frames = await extractFramesSmart(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
+  if (jobId) await updateJobProgress(jobId, 40, `חולצו ${frames.length} פריימים — שולח ל-Claude...`);
 
-  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam);
+  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam, jobId);
 
   console.log('\n🧹 Cleaning up temp files...');
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
@@ -680,17 +704,20 @@ export async function analyzeGoogleDrive(url: string, context: string, focus: st
 // ============================================================
 
 /** Analyze YouTube — full pipeline: yt-dlp → ffmpeg → Claude Vision */
-export async function analyzeYouTube(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
   console.log(`   Context: ${context || '(none)'}`);
 
+  if (jobId) await updateJobProgress(jobId, 5, 'מוריד סרטון מ-YouTube...');
   const videoPath = downloadYouTube(url);
+  if (jobId) await updateJobProgress(jobId, 20, 'הורדה הושלמה — מחלץ פריימים...');
   const frames = await extractFramesSmart(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
+  if (jobId) await updateJobProgress(jobId, 40, `חולצו ${frames.length} פריימים — שולח ל-Claude...`);
 
-  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam);
+  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam, jobId);
 
   console.log('\n🧹 Cleaning up temp files...');
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
@@ -702,18 +729,20 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file (local only) */
-export async function analyzeVideo(videoPath: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
+  if (jobId) await updateJobProgress(jobId, 10, 'מחלץ פריימים מהסרטון...');
   const frames = await extractFramesSmart(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
-  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam);
+  if (jobId) await updateJobProgress(jobId, 40, `חולצו ${frames.length} פריימים — שולח ל-Claude...`);
+  const result = await analyzeFrames(frames, context, focus, roster, teamName, awayTeam, jobId);
   frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
 
 /** Analyze a single image file */
-export async function analyzeImage(imagePath: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Promise<AnalysisResult> {
+export async function analyzeImage(imagePath: string, context: string, focus: string, roster?: RosterPlayer[], teamName?: string, awayTeam?: string, jobId?: string): Promise<AnalysisResult> {
   console.log('\n🖼️ Analyzing single image...');
-  return analyzeFrames([imagePath], context, focus, roster, teamName, awayTeam);
+  return analyzeFrames([imagePath], context, focus, roster, teamName, awayTeam, jobId);
 }

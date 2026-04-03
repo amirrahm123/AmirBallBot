@@ -295,13 +295,14 @@ textarea{resize:vertical;min-height:80px}
       <!-- Processing state -->
       <div id="analysis-processing" class="processing hidden">
         <div class="spinner"></div>
-        <h3>מנתח את המשחק...</h3>
-        <p style="color:var(--text3);font-size:14px;margin-top:8px">זה יכול לקחת 1-3 דקות</p>
-        <div class="steps">
-          <div class="step active" id="step-upload"><span class="step-icon">⏳</span> מעלה קבצים</div>
-          <div class="step" id="step-frames"><span class="step-icon">⏳</span> מחלץ פריימים</div>
-          <div class="step" id="step-ai"><span class="step-icon">⏳</span> Claude מנתח</div>
-          <div class="step" id="step-done"><span class="step-icon">⏳</span> מכין דו״ח</div>
+        <h3 id="progress-title">מנתח את המשחק...</h3>
+        <p id="progress-message" style="color:var(--text3);font-size:14px;margin-top:8px">מתחיל ניתוח...</p>
+        <div style="max-width:400px;margin:20px auto 0">
+          <div style="background:var(--bg);border-radius:8px;height:24px;overflow:hidden;border:1px solid var(--border)">
+            <div id="progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:8px;transition:width .5s ease;width:0%;display:flex;align-items:center;justify-content:flex-end;padding:0 8px">
+              <span id="progress-pct" style="font-size:11px;font-weight:700;color:#0a0c0f;font-family:'DM Mono',monospace"></span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -511,7 +512,47 @@ fileInput.addEventListener('change', () => {
   }
 });
 
-// === Analyze ===
+// === Analyze (job queue + polling) ===
+let activeJobPoll = null; // interval ID for polling
+
+function updateProgress(progress, message) {
+  document.getElementById('progress-bar').style.width = progress + '%';
+  document.getElementById('progress-pct').textContent = progress > 0 ? progress + '%' : '';
+  if (message) document.getElementById('progress-message').textContent = message;
+}
+
+function showAnalysisError(msg) {
+  document.getElementById('analysis-processing').classList.add('hidden');
+  document.getElementById('analysis-empty').classList.remove('hidden');
+  document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
+}
+
+async function pollJob(jobId) {
+  try {
+    const res = await fetch(API + '/api/analyze/job/' + jobId);
+    if (!res.ok) throw new Error('שגיאת שרת: ' + res.status);
+    const job = await res.json();
+
+    updateProgress(job.progress || 0, job.progressMessage || '');
+
+    if (job.status === 'done' && job.result) {
+      clearInterval(activeJobPoll);
+      activeJobPoll = null;
+      updateProgress(100, 'הניתוח הושלם!');
+      currentAnalysis = job.result;
+      await new Promise(r => setTimeout(r, 600));
+      renderAnalysis(job.result);
+    } else if (job.status === 'error') {
+      clearInterval(activeJobPoll);
+      activeJobPoll = null;
+      showAnalysisError(job.error || 'שגיאה לא ידועה');
+    }
+  } catch (err) {
+    // Network error — keep polling, don't stop
+    console.warn('Poll error:', err.message);
+  }
+}
+
 document.getElementById('analyze-btn').addEventListener('click', async () => {
   const file = fileInput.files[0];
   const ytUrl = document.getElementById('youtube-url').value.trim();
@@ -534,42 +575,12 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   document.getElementById('analysis-processing').classList.remove('hidden');
   document.getElementById('analysis-results').classList.add('hidden');
   document.getElementById('analysis-empty').classList.add('hidden');
+  updateProgress(0, 'שולח לשרת...');
 
-  // Animate steps — only first 3 auto-advance; step 4 waits for API
-  const steps = ['step-upload','step-frames','step-ai','step-done'];
-  // Reset all steps
-  steps.forEach(id => { const el = document.getElementById(id); el.classList.remove('active','done'); el.querySelector('.step-icon').textContent = '⏳'; });
-  let currentStep = 0;
-  const stepInterval = setInterval(() => {
-    if (currentStep > 0) {
-      const prev = document.getElementById(steps[currentStep-1]);
-      prev.classList.remove('active'); prev.classList.add('done');
-      prev.querySelector('.step-icon').textContent = '✅';
-    }
-    if (currentStep < steps.length - 1) { // stop before last step
-      const cur = document.getElementById(steps[currentStep]);
-      cur.classList.add('active');
-      cur.querySelector('.step-icon').textContent = '⏳';
-      currentStep++;
-    } else {
-      clearInterval(stepInterval); // keep last step spinning
-      const last = document.getElementById(steps[steps.length - 1]);
-      last.classList.add('active');
-      last.querySelector('.step-icon').textContent = '⏳';
-    }
-  }, 2000);
-
-  function finishSteps() {
-    clearInterval(stepInterval);
-    steps.forEach(id => {
-      const el = document.getElementById(id);
-      el.classList.remove('active'); el.classList.add('done');
-      el.querySelector('.step-icon').textContent = '✅';
-    });
-  }
+  // Stop any previous poll
+  if (activeJobPoll) { clearInterval(activeJobPoll); activeJobPoll = null; }
 
   try {
-    // Store the video URL for the player
     currentVideoUrl = ytUrl || null;
 
     const formData = new FormData();
@@ -580,12 +591,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     formData.append('home_team', document.getElementById('home-team').value.trim());
     formData.append('away_team', document.getElementById('away-team').value.trim());
 
-    // 25 minute timeout for long video analysis
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
-
-    const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
-    clearTimeout(timeout);
+    const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData });
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -593,20 +599,19 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     }
 
     const data = await res.json();
-
     if (data.error) throw new Error(data.error);
 
-    // Mark all steps done, brief pause, then show results
-    finishSteps();
-    currentAnalysis = data;
-    await new Promise(r => setTimeout(r, 600));
-    renderAnalysis(data);
+    if (!data.jobId) throw new Error('לא התקבל מזהה ג\'וב מהשרת');
+
+    updateProgress(5, 'הניתוח התחיל — ממתין לתוצאות...');
+
+    // Start polling every 10 seconds
+    activeJobPoll = setInterval(() => pollJob(data.jobId), 10000);
+    // Also poll immediately after a short delay
+    setTimeout(() => pollJob(data.jobId), 3000);
+
   } catch (err) {
-    finishSteps();
-    document.getElementById('analysis-processing').classList.add('hidden');
-    document.getElementById('analysis-empty').classList.remove('hidden');
-    const msg = err.name === 'AbortError' ? 'הניתוח ארך יותר מדי זמן — נסה שוב' : (err.message || 'שגיאה בניתוח');
-    document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
+    showAnalysisError(err.message || 'שגיאה בניתוח');
   }
 });
 

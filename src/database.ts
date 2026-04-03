@@ -134,12 +134,37 @@ const RosterSchema = new Schema<IRoster>({
   updatedAt: { type: Date, default: Date.now },
 });
 
+// === Job Types & Schema ===
+
+export interface IJob extends Document {
+  jobId: string;
+  status: 'processing' | 'done' | 'error';
+  progress: number;
+  progressMessage: string;
+  result: any;
+  error: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const JobSchema = new Schema<IJob>({
+  jobId: { type: String, required: true, unique: true, index: true },
+  status: { type: String, default: 'processing', enum: ['processing', 'done', 'error'] },
+  progress: { type: Number, default: 0 },
+  progressMessage: { type: String, default: '' },
+  result: { type: Schema.Types.Mixed, default: null },
+  error: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
 // === Models ===
 
 export const Player = mongoose.model<IPlayer>('Player', PlayerSchema);
 export const Game = mongoose.model<IGame>('Game', GameSchema);
 export const TeamKnowledge = mongoose.model<ITeamKnowledge>('TeamKnowledge', TeamKnowledgeSchema);
 export const Roster = mongoose.model<IRoster>('Roster', RosterSchema);
+export const Job = mongoose.model<IJob>('Job', JobSchema);
 
 // === Connect ===
 

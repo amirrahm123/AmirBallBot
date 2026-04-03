@@ -3,22 +3,31 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { analyzeVideo, analyzeYouTubeCloud, analyzeGoogleDrive, analyzeImage, RosterPlayer } from '../analyzer';
-import { Game, Roster } from '../database';
+import crypto from 'crypto';
+import { analyzeVideo, analyzeYouTubeCloud, analyzeGoogleDrive, analyzeImage, RosterPlayer, updateJobProgress } from '../analyzer';
+import { Game, Roster, Job } from '../database';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
 
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
-// POST with multipart form data (file upload + youtube URL)
+// POST /api/analyze — kick off analysis, return jobId immediately
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  // Disable request/response timeouts
+  req.setTimeout(0);
+  res.setTimeout(0);
   try {
     const youtubeUrl = req.body?.youtube_url;
     const context = req.body?.context || '';
     const focus = req.body?.focus || 'all';
     const homeTeamOverride = req.body?.home_team?.trim() || '';
     const awayTeam = req.body?.away_team?.trim() || '';
+
+    if (!req.file && !youtubeUrl) {
+      res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube / Google Drive' });
+      return;
+    }
 
     // Load roster from DB
     let roster: RosterPlayer[] = [];
@@ -32,34 +41,72 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       }
     } catch {}
 
-    console.log(`📊 Analysis request — focus: ${focus}, youtube: ${!!youtubeUrl}, file: ${!!req.file}, roster: ${roster.length}`);
+    // Generate job ID and create job document
+    const jobId = crypto.randomBytes(8).toString('hex');
+    await Job.create({ jobId, status: 'processing', progress: 0, progressMessage: 'מתחיל ניתוח...' });
 
-    let result;
+    console.log(`📊 Job ${jobId} created — focus: ${focus}, youtube: ${!!youtubeUrl}, file: ${!!req.file}, roster: ${roster.length}`);
 
+    // Return jobId immediately — don't await the analysis
+    res.json({ jobId, status: 'processing' });
+
+    // If we have an uploaded file, copy it so multer cleanup doesn't delete it
+    let filePath: string | null = null;
+    let fileExt: string | null = null;
     if (req.file) {
-      const ext = path.extname(req.file.originalname).toLowerCase();
-      console.log(`📁 Uploaded file: ${req.file.originalname} (${ext})`);
-
-      if (IMAGE_EXTS.includes(ext)) {
-        result = await analyzeImage(req.file.path, context, focus, roster, teamName, awayTeam);
-      } else {
-        result = await analyzeVideo(req.file.path, context, focus, roster, teamName, awayTeam);
-      }
-
+      fileExt = path.extname(req.file.originalname).toLowerCase();
+      const tmpCopy = path.join(os.tmpdir(), `ballbot-job-${jobId}${fileExt}`);
+      fs.copyFileSync(req.file.path, tmpCopy);
+      filePath = tmpCopy;
       try { fs.unlinkSync(req.file.path); } catch {}
-
-    } else if (youtubeUrl && youtubeUrl.includes('drive.google.com')) {
-      console.log('📂 Detected Google Drive URL');
-      result = await analyzeGoogleDrive(youtubeUrl, context, focus, roster, teamName, awayTeam);
-    } else if (youtubeUrl) {
-      console.log('📺 Detected YouTube URL');
-      result = await analyzeYouTubeCloud(youtubeUrl, context, focus, roster, teamName, awayTeam);
-    } else {
-      res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube / Google Drive' });
-      return;
     }
 
-    // Save to MongoDB
+    // Run analysis in background
+    runAnalysis(jobId, filePath, fileExt, youtubeUrl, context, focus, roster, teamName, awayTeam);
+
+  } catch (err: any) {
+    console.error('❌ שגיאה ביצירת ג\'וב:', err);
+    res.status(500).json({ error: err.message || 'שגיאה בהתחלת ניתוח' });
+  }
+});
+
+// Background analysis runner
+async function runAnalysis(
+  jobId: string,
+  filePath: string | null,
+  fileExt: string | null,
+  youtubeUrl: string | undefined,
+  context: string,
+  focus: string,
+  roster: RosterPlayer[],
+  teamName: string | undefined,
+  awayTeam: string,
+) {
+  try {
+    let result: any = null;
+
+    if (filePath && fileExt) {
+      console.log(`📁 Job ${jobId}: Uploaded file (${fileExt})`);
+      if (IMAGE_EXTS.includes(fileExt)) {
+        await updateJobProgress(jobId, 20, 'מנתח תמונה...');
+        result = await analyzeImage(filePath, context, focus, roster, teamName, awayTeam, jobId);
+      } else {
+        result = await analyzeVideo(filePath, context, focus, roster, teamName, awayTeam, jobId);
+      }
+      try { fs.unlinkSync(filePath); } catch {}
+
+    } else if (youtubeUrl && youtubeUrl.includes('drive.google.com')) {
+      console.log(`📂 Job ${jobId}: Google Drive URL`);
+      result = await analyzeGoogleDrive(youtubeUrl, context, focus, roster, teamName, awayTeam, jobId);
+
+    } else if (youtubeUrl) {
+      console.log(`📺 Job ${jobId}: YouTube URL`);
+      result = await analyzeYouTubeCloud(youtubeUrl, context, focus, roster, teamName, awayTeam, jobId);
+    }
+
+    if (!result) throw new Error('לא הצלחתי לנתח — לא זוהה סוג קלט');
+
+    // Save game to MongoDB
     try {
       const game = new Game({
         title: result.game,
@@ -77,12 +124,46 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       console.warn('⚠️ DB save failed (continuing):', dbErr);
     }
 
-    console.log(`✅ Analysis complete — ${result.plays.length} plays`);
-    res.json(result);
+    // Mark job as done
+    await Job.updateOne({ jobId }, {
+      status: 'done',
+      progress: 100,
+      progressMessage: 'הניתוח הושלם!',
+      result,
+      updatedAt: new Date(),
+    });
+    console.log(`✅ Job ${jobId} complete — ${result.plays?.length || 0} plays`);
 
   } catch (err: any) {
-    console.error('❌ שגיאה בניתוח:', err);
-    res.status(500).json({ error: err.message || 'שגיאה בניתוח' });
+    console.error(`❌ Job ${jobId} failed:`, err);
+    await Job.updateOne({ jobId }, {
+      status: 'error',
+      progress: 0,
+      progressMessage: '',
+      error: err.message || 'שגיאה לא ידועה',
+      updatedAt: new Date(),
+    }).catch(() => {});
+  }
+}
+
+// GET /api/analyze/job/:jobId — poll job status
+router.get('/job/:jobId', async (req: Request, res: Response) => {
+  try {
+    const job = await Job.findOne({ jobId: req.params.jobId });
+    if (!job) {
+      res.status(404).json({ error: 'ג\'וב לא נמצא' });
+      return;
+    }
+    res.json({
+      jobId: job.jobId,
+      status: job.status,
+      progress: job.progress,
+      progressMessage: job.progressMessage,
+      result: job.status === 'done' ? job.result : null,
+      error: job.status === 'error' ? job.error : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
