@@ -24,17 +24,19 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   ? path.join(BIN_DIR, 'ffprobe.exe')
   : 'ffprobe';
 
-const SYSTEM_PROMPT = `אתה אנליסט כדורסל. נתח פריימים ממשחק והחזר JSON בלבד:
+const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי. נתח כל פריים בעומק ובדיוק. החזר JSON בלבד:
 {"game":"תיאור","plays":[{"time":"00:00","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["#5"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
 
-כללים:
-- חלץ 1-3 מהלכים מכל פריים. תאר רק מה שנראה בפריים, אל תנחש.
-- דלג על: שידורים חוזרים, טיימאאוטים, קהל, פרסומת, קלוז-אפ על מאמן.
-- בלוק=חסימת כדור חוקית. פאול=פגיעה בזרוע/גוף. אל תבלבל.
-- אין לציין או לנסות לזהות מספרי גופיות.
-- זיהוי קבוצות לפי צבע: הפועל ת"א=אדום, מכבי ת"א=צהוב, הפועל י-ם=שחור, מכבי חיפה=ירוק, הפועל חיפה=אדום, מכבי רעננה=כחול.
-- תאריך הזמן בשדה time חייב להיות MM:SS (למשל 03:00), לא 00h03m00s.
-- כל טקסט בעברית. הערה נפרדת לכל מהלך.`;
+**כללי חובה:**
+- חלץ מינימום 15-20 מהלכים סה"כ מכל הפריימים. לא פחות!
+- מכל פריים: תמצא 2-4 מהלכים ספציפיים (לא כלליים).
+- תאר בדיוק מה שאתה רואה: שחקנים, הכדור, תנועה, תוצאה.
+- דלג רק על: שידורים חוזרים, טיימאוטים בלבד, קהל, פרסומת, קלוז-אפ מוחלד.
+- בלוק=חסימת כדור חוקית. פאול=פגיעה בזרוע/גוף.
+- אין ציון מספרי גופיות בהערות (תיאור בעברית בלבד).
+- זיהוי קבוצות: הפועל ת"א=אדום, מכבי ת"א=צהוב, הפועל י-ם=שחור, מכבי חיפה=ירוק, הפועל חיפה=אדום, מכבי רעננה=כחול.
+- כל הערה חייבת להיות ייחודית — אין הערות כלליות או חוזרות.
+- time בפורמט MM:SS (למשל 03:00).`;
 
 export interface AnalysisResult {
   game: string;
@@ -472,27 +474,41 @@ async function extractFramesSmart(videoPath: string): Promise<string[]> {
   return extractFramesSimple(videoPath, duration);
 }
 
-/** Original simple extraction for short videos */
+/** Original simple extraction for short videos — more aggressive for better coverage */
 function extractFramesSimple(videoPath: string, duration: number): string[] {
-  console.log(`\n📸 Simple extraction (1 frame every 3 minutes)...`);
+  console.log(`\n📸 Smart frame extraction (adaptive intervals)...`);
 
-  const interval = 180; // 3 minutes
+  // Adaptive frame rate based on video length:
+  // 5 min (300s) → ~8-10 frames (1 every 35-40s)
+  // 10 min (600s) → ~12-15 frames (1 every 40-50s)
+  // 30 min (1800s) → ~15-18 frames (1 every 100-120s)
+  // 90 min (5400s) → ~18-20 frames (1 every 270-300s)
+  const interval = Math.max(30, Math.min(300, Math.floor(duration / 15)));
   const timestamps: number[] = [];
-  for (let t = interval; t < duration; t += interval) {
+  
+  for (let t = Math.floor(interval); t < duration; t += interval) {
     timestamps.push(t);
   }
+  
+  // If too few frames, add more strategic ones
+  if (timestamps.length < 6) {
+    timestamps.unshift(Math.floor(interval / 2));
+    if (duration > timestamps[timestamps.length - 1] + interval / 2) {
+      timestamps.push(Math.floor(duration - interval / 2));
+    }
+  }
 
-  // Cap at 20 frames
-  if (timestamps.length > 20) {
-    console.log(`   ⚠️ Too many frames (${timestamps.length}), keeping every Nth to get ~20`);
-    const step = Math.ceil(timestamps.length / 20);
-    const selected = timestamps.filter((_, i) => i % step === 0).slice(0, 20);
+  // Cap at 25 frames for good coverage without token explosion
+  if (timestamps.length > 25) {
+    console.log(`   ⚠️ Many frames detected (${timestamps.length}), keeping best ${25}`);
+    const step = Math.ceil(timestamps.length / 25);
+    const selected = timestamps.filter((_, i) => i % step === 0).slice(0, 25);
     timestamps.length = 0;
     timestamps.push(...selected);
   }
 
   const frames = extractFramesAtSeconds(videoPath, timestamps);
-  console.log(`   ✅ Extracted ${frames.length} frames from ${duration.toFixed(0)}s video`);
+  console.log(`   ✅ Extracted ${frames.length} frames (~1 every ${Math.floor(duration / frames.length)}s) from ${(duration / 60).toFixed(1)}min video`);
   return frames;
 }
 
@@ -535,7 +551,7 @@ async function analyzeBatch(
 
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
-    text: `פוקוס: ${focus}\nהקשר: ${context || 'אין'}\n\nשם הקובץ = חותמת זמן (frame_00h04m46s = 4:46). השתמש בו לשדה "time" בפורמט MM:SS (למשל 04:46). החזר JSON בגוף בלבד.`,
+    text: `פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר'}\n\n**הוראות חובה:**\n- שם קובץ = חותמת זמן בדיוק (frame_00h04m46s = 4:46). השתמש בו בשדה "time" בפורמט MM:SS בלבד.\n- צריך להוציא מינימום 15-20 מהלכים סה"כ מכל ערכת הפריימים שלפניך.\n- מכל פריים: תמצא 2-4 מהלכים שונים ודקים. אם אתה רואה פחות מ-2 מהלכים בפריים, בדוק שוב בעיון.\n- תיאור מפורט עבור כל מהלך: מה קרה, איזה שחקנים, מה הסיום (סל, כדור אבוד, הגנה וכו').\n- החזר JSON בלבד, בלא טקסט נוסף.`,
   };
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {

@@ -3,7 +3,12 @@
     "allow": [
       "Bash(railway login:*)",
       "Bash(git init:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(railway up:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(npm run:*)"
     ]
   }
 }

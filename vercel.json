@@ -2,11 +2,6 @@
   "version": 2,
   "buildCommand": "",
   "outputDirectory": ".",
-  "functions": {
-    "api/*.ts": {
-      "maxDuration": 300
-    }
-  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],

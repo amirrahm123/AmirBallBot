@@ -11,7 +11,7 @@ import rosterRouter from './routes/roster';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // CORS — allow Vercel frontend and local dev
 app.use(cors({
@@ -19,6 +19,7 @@ app.use(cors({
     'https://amirballbot.vercel.app',
     'https://amirballbot-amirrahm.vercel.app',
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:5500',
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
