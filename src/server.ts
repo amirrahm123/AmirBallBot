@@ -43,9 +43,13 @@ console.log('✅ Routes registered');
 // Start server
 async function start() {
   await connectDB();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`🏀 AmirBallBot API running on port ${PORT}`);
   });
+  // 25 minute timeout for long video analysis
+  server.timeout = 25 * 60 * 1000;
+  server.keepAliveTimeout = 25 * 60 * 1000;
+  server.headersTimeout = 25 * 60 * 1000 + 1000;
 }
 
 start().catch((err) => {

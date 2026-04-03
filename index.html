@@ -82,37 +82,24 @@ textarea{resize:vertical;min-height:80px}
 .upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
 
 /* Play list */
-.play-item{background:var(--bg3);border-radius:8px;padding:14px 16px;cursor:pointer;transition:.2s;border:2px solid transparent}
-.play-item:hover{border-color:var(--border);background:var(--bg4)}
-.play-item.active-play{border-color:var(--accent);background:rgba(0,229,160,.06)}
-.play-item.play-defense{border-right:3px solid var(--red)}
-.play-item.play-offense{border-right:3px solid var(--green)}
-.play-item.play-transition{border-right:3px solid var(--yellow)}
+.play-item{background:var(--bg3);border-radius:8px;padding:10px 14px;cursor:pointer;transition:.2s;border-right:none;border-left:4px solid transparent}
+.play-item:hover{background:var(--bg4)}
+.play-item.active-play{background:rgba(0,229,160,.06)}
+.play-item.play-defense{border-left-color:var(--red)}
+.play-item.play-offense{border-left-color:var(--green)}
+.play-item.play-transition{border-left-color:var(--yellow)}
 .play-item .play-header{display:flex;align-items:center;gap:10px}
-.play-item .play-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);background:var(--bg);padding:2px 7px;border-radius:4px;min-width:28px;text-align:center}
-.play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:50px}
-.play-item .play-type{font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:44px;flex-shrink:0}
+.play-item .play-type{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
 .play-item .play-type.offense{background:rgba(0,229,160,.15);color:var(--green)}
 .play-item .play-type.defense{background:rgba(255,77,106,.15);color:var(--red)}
 .play-item .play-type.transition{background:rgba(255,197,68,.15);color:var(--yellow)}
-.play-item .play-label{flex:1;font-weight:500;font-size:14px}
-.play-item .play-note{display:none}
-.play-item .play-players{font-size:12px;color:var(--text3);font-family:'DM Mono',monospace}
-.plays-scroll{max-height:600px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-left:4px}
+.play-item .play-label{flex:1;font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.play-item .play-expanded{padding-top:10px;margin-top:10px;border-top:1px solid var(--border)}
+.play-item .play-note-body{font-size:13px;color:var(--text2);line-height:1.6}
+.play-item .play-note-players{font-size:12px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:6px}
+.plays-scroll{max-height:600px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-left:4px}
 
-/* Note panel — floating below video */
-.note-panel{background:var(--bg2);border:1px solid var(--accent);border-radius:var(--radius);padding:20px;animation:fadeIn .3s ease;position:relative}
-.note-panel .note-close{position:absolute;top:12px;left:12px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px 8px;border-radius:4px;transition:.2s}
-.note-panel .note-close:hover{color:var(--text);background:var(--bg3)}
-.note-panel .note-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.note-panel .note-time{font-family:'DM Mono',monospace;font-size:15px;color:var(--accent);font-weight:700}
-.note-panel .note-type-badge{font-size:12px;padding:4px 10px;border-radius:4px;font-weight:600;text-transform:uppercase}
-.note-panel .note-type-badge.offense{background:rgba(0,229,160,.15);color:var(--green)}
-.note-panel .note-type-badge.defense{background:rgba(255,77,106,.15);color:var(--red)}
-.note-panel .note-type-badge.transition{background:rgba(255,197,68,.15);color:var(--yellow)}
-.note-panel .note-label{font-size:16px;font-weight:700;font-family:'Syne',sans-serif;margin-bottom:8px}
-.note-panel .note-body{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:12px}
-.note-panel .note-players{font-size:13px;color:var(--text3);font-family:'DM Mono',monospace}
 
 /* Insights */
 .insight-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
@@ -285,11 +272,8 @@ textarea{resize:vertical;min-height:80px}
         <div id="roster-section" class="hidden">
           <div style="margin-bottom:12px">
             <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם הקבוצה</label>
-            <div style="display:flex;gap:8px">
-              <input type="text" id="roster-team-name" placeholder="לדוגמה: מכבי תל אביב, Lakers, Real Madrid" style="direction:rtl;flex:1">
-              <button class="btn btn-secondary btn-sm" id="fetch-roster-btn" onclick="fetchRosterAuto()">טען רוסטר אוטומטית 🔍</button>
-            </div>
-            <small id="fetch-roster-status" style="color:var(--text3);margin-top:4px;display:none;font-size:11px"></small>
+            <input type="text" id="roster-team-name" placeholder="לדוגמה: מכבי תל אביב, Lakers, Real Madrid" style="direction:rtl">
+            <small style="color:var(--text3);margin-top:6px;display:block;font-size:12px">הכנס את הרוסטר ידנית לפי הסגל הרשמי</small>
           </div>
           <div id="roster-players" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -332,7 +316,6 @@ textarea{resize:vertical;min-height:80px}
               <span id="video-ts-hint" class="hidden" style="color:var(--accent)">💡 לחץ על מהלך כדי לקפוץ לזמן בסרטון</span>
             </div>
           </div>
-          <div id="note-panel" class="note-panel hidden"></div>
         </div>
 
         <div class="stats-row" id="stat-cards"></div>
@@ -597,9 +580,9 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     formData.append('home_team', document.getElementById('home-team').value.trim());
     formData.append('away_team', document.getElementById('away-team').value.trim());
 
-    // 5 minute timeout to prevent hanging forever
+    // 25 minute timeout for long video analysis
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+    const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
 
     const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
     clearTimeout(timeout);
@@ -687,44 +670,24 @@ function seekVideo(timeStr) {
   }
 }
 
-// Show floating note panel for a play
-function showNotePanel(play, index) {
-  const panel = document.getElementById('note-panel');
-  const typeClass = (play.type||'').toLowerCase().includes('defense') ? 'defense' : (play.type||'').toLowerCase().includes('transition') ? 'transition' : 'offense';
-  const typeLabel = (play.type||'').toLowerCase().includes('defense') ? 'הגנה' : (play.type||'').toLowerCase().includes('transition') ? 'מעבר' : 'התקפה';
+// Handle play card click — expand/collapse inline note
+function onPlayCardClick(el, index) {
+  const play = window._currentPlays[index];
+  const expanded = el.querySelector('.play-expanded');
+  const wasActive = el.classList.contains('active-play');
 
-  panel.innerHTML = `
-    <button class="note-close" onclick="closeNotePanel()">✕</button>
-    <div class="note-header">
-      <span class="note-time">#${index + 1} — ${play.time || ''}</span>
-      <span class="note-type-badge ${typeClass}">${typeLabel}</span>
-    </div>
-    <div class="note-label">${play.label || ''}</div>
-    <div class="note-body">${play.note || ''}</div>
-    ${(play.players||[]).length ? '<div class="note-players">שחקנים: ' + play.players.join(', ') + '</div>' : ''}
-  `;
-  panel.classList.remove('hidden');
-}
+  // Collapse all others
+  document.querySelectorAll('.play-item.active-play').forEach(e => {
+    e.classList.remove('active-play');
+    e.querySelector('.play-expanded')?.classList.add('hidden');
+  });
 
-function closeNotePanel() {
-  document.getElementById('note-panel').classList.add('hidden');
-  document.querySelectorAll('.play-item.active-play').forEach(el => el.classList.remove('active-play'));
-}
-
-// Handle play card click — highlight, show note, seek video
-function onPlayClick(el, play, index) {
-  // Remove previous active
-  document.querySelectorAll('.play-item.active-play').forEach(e => e.classList.remove('active-play'));
-  el.classList.add('active-play');
-
-  // Show note panel
-  showNotePanel(play, index);
-
-  // Seek video
-  seekVideo(play.time || '');
-
-  // Scroll video into view
-  document.querySelector('.video-sticky')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!wasActive) {
+    el.classList.add('active-play');
+    expanded.classList.remove('hidden');
+    // Seek video
+    seekVideo(play.time || '');
+  }
 }
 
 // === Render analysis ===
@@ -755,20 +718,19 @@ function renderAnalysis(data) {
   document.getElementById('plays-list').innerHTML = plays.map((p, i) => {
     const typeClass = (p.type||'').toLowerCase().includes('defense') ? 'defense' : (p.type||'').toLowerCase().includes('transition') ? 'transition' : 'offense';
     const typeLabel = (p.type||'').toLowerCase().includes('defense') ? 'הגנה' : (p.type||'').toLowerCase().includes('transition') ? 'מעבר' : 'התקפה';
-    const time = p.time||'';
-    return `<div class="play-item play-${typeClass}" onclick="onPlayClick(this, window._currentPlays[${i}], ${i})">
+    const time = formatDisplayTime(p.time||'');
+    return `<div class="play-item play-${typeClass}" onclick="onPlayCardClick(this, ${i})">
       <div class="play-header">
-        <span class="play-num">#${i + 1}</span>
         <span class="play-time">${time}</span>
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
-        <span class="play-players">${(p.players||[]).join(', ')}</span>
+      </div>
+      <div class="play-expanded hidden">
+        <div class="play-note-body">${p.note||''}</div>
+        ${(p.players||[]).length ? '<div class="play-note-players">שחקנים: ' + p.players.join(', ') + '</div>' : ''}
       </div>
     </div>`;
   }).join('');
-
-  // Close note panel from previous analysis
-  closeNotePanel();
 
   // Insights
   document.getElementById('insights-list').innerHTML = insights.map(i => `
@@ -968,51 +930,29 @@ document.getElementById('generate-practice')?.addEventListener('click', async ()
 
 function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// Convert any timestamp format to clean "M:SS" or "MM:SS"
+// Handles: "00h03m00s" → "3:00", "01h02m15s" → "62:15", "4:46" → "4:46"
+function formatDisplayTime(t) {
+  if (!t) return '';
+  // Handle "00h03m00s" format
+  const hms = t.match(/(\d+)h(\d+)m(\d+)s/);
+  if (hms) {
+    const totalMin = parseInt(hms[1]) * 60 + parseInt(hms[2]);
+    const sec = parseInt(hms[3]);
+    return totalMin + ':' + String(sec).padStart(2, '0');
+  }
+  // Handle "HH:MM:SS" format
+  const parts = t.split(':').map(Number);
+  if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+    const totalMin = parts[0] * 60 + parts[1];
+    return totalMin + ':' + String(parts[2]).padStart(2, '0');
+  }
+  // Already "M:SS" or "MM:SS"
+  return t;
+}
+
 // === Upload Screen Roster ===
 const POSITIONS = ['פוינט גארד','שוטינג גארד','סמול פורוורד','פאואר פורוורד','סנטר'];
-
-async function fetchRosterAuto() {
-  const teamName = document.getElementById('roster-team-name').value.trim();
-  if (!teamName) {
-    document.getElementById('fetch-roster-status').style.display = 'block';
-    document.getElementById('fetch-roster-status').textContent = '⚠️ הכנס שם קבוצה קודם';
-    document.getElementById('fetch-roster-status').style.color = 'var(--red)';
-    return;
-  }
-
-  const btn = document.getElementById('fetch-roster-btn');
-  const status = document.getElementById('fetch-roster-status');
-  btn.disabled = true;
-  btn.textContent = 'מחפש... ⏳';
-  status.style.display = 'block';
-  status.style.color = 'var(--text3)';
-  status.textContent = `מחפש רוסטר עבור "${teamName}"...`;
-
-  try {
-    const res = await fetch(API + '/api/roster/fetch', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ teamName })
-    });
-    const data = await res.json();
-
-    if (data.error) throw new Error(data.error);
-    if (!data.players || data.players.length === 0) throw new Error('לא נמצאו שחקנים');
-
-    // Clear existing rows and populate
-    document.getElementById('roster-players').innerHTML = '';
-    data.players.forEach(p => addRosterRow(p.number, p.name, p.position));
-
-    status.style.color = 'var(--accent)';
-    status.textContent = `✅ נמצאו ${data.players.length} שחקנים — בדוק ושמור`;
-  } catch (err) {
-    status.style.color = 'var(--red)';
-    status.textContent = '❌ ' + (err.message || 'שגיאה באחזור רוסטר');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'טען רוסטר אוטומטית 🔍';
-  }
-}
 
 function addRosterRow(number, name, position) {
   const container = document.getElementById('roster-players');
