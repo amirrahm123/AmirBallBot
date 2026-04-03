@@ -25,42 +25,38 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   : 'ffprobe';
 
 const SYSTEM_PROMPT = `You are an expert basketball analyst and assistant coach.
-You are watching a sequence of 5 frames from a 10 second clip.
+You are watching 5 frames from a 16 second clip around a detected event.
+Frame 1 = before the play. Frame 2 = play starts. Frame 3 = peak action. Frame 4 = decision moment. Frame 5 = outcome.
 
-Write a note if you see ANY of these:
-- Any offensive play (drive, shot, pass, screen, pick and roll)
-- Any defensive action (pressure, rotation, positioning, foul)
-- Any transition moment (fast break, turnover recovery)
-- Any tactical pattern (team movement, spacing, set play)
-Do NOT write notes about dead ball situations, timeouts, or players standing completely still.
-Target: 1-2 notes per clip. For a 5 minute video aim for 5-8 notes total.
-If nothing at all is happening in the clip — return empty plays array.
+STRICT FILTER — only write a note if ALL of these are true:
+1. You can identify a specific play type (חדירה לסל, פיק אנד רול, מתפרצת, חטיפת כדור, איבוד כדור, זריקה, הגנה, etc.)
+2. You can see the outcome in Frame 5
+3. The play involves the home team
+If any of these is false → return empty plays array.
 
-Each play has a start_time and end_time based on the frame timestamps you see.
+ONE note per clip maximum.
+Target: 6-10 notes for a 5 minute video.
 
 Return JSON only:
-{"game":"תיאור","plays":[{"start_time":"0:00","end_time":"0:08","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
+{"game":"תיאור","plays":[{"start_time":"0:00","end_time":"0:12","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
+
+For each note follow this exact structure in the "note" field:
+מה קרה: [play type in Hebrew basketball terms]
+מי ביצע: [player name from roster or description]
+תוצאה: [what happened in Frame 5 — score/turnover/stop/miss]
+משמעות: [one sentence tactical meaning for the coach]
+
+VERDICT — every note must end with one of:
+✅ ביצוע טוב — [why]
+❌ שגיאה טקטית — [what should have been done instead]
+⚠️ לתשומת לב — [pattern to watch]
 
 RULES:
-- Only analyze HOME team players
+- Only analyze HOME team players. If a player is in the roster, use their name.
 - Never invent moments you did not see
 - Never write a timestamp you were not given
+- Use Frame 2 timestamp as start_time, Frame 5 timestamp as end_time
 - All output must be in Hebrew
-
-COACHING TONE:
-- Write like a basketball coach talking to players, not a journalist describing a scene
-- Every note must explain: what happened tactically, why it matters for the coach, which player if identifiable
-- Be specific: "חדירה לסל חזקה של #5 עם פיק של #10, הגנת הסיוע איחרה" — not "שחקן חודר לסל"
-- If a player is in the roster, use their name
-
-DEFENSIVE NOTES:
-- Write a defensive note whenever you see defensive pressure, rotation, positioning, or a foul
-- If you can identify the defender, name them. If not, write "מגן של הקבוצה"
-- Describe what the defensive action was and whether it succeeded or failed
-
-PLAYER ACTIONS:
-- If a specific player is visible, describe exactly what THAT player did
-- Always name the player and their exact action
 
 HEBREW BASKETBALL TERMS:
 coast to coast = קוסט טו קוסט | pull-up jumper = ג'אמפשוט בעצירה | pick and roll = פיק אנד רול
@@ -330,25 +326,41 @@ interface DetectedEvent {
   source: 'score' | 'motion';
 }
 
+/** Compare two raw buffers by pixel byte values. Returns fraction of differing bytes (0-1). */
+function compareBufferPixels(a: Buffer, b: Buffer): number {
+  const len = Math.min(a.length, b.length);
+  if (len === 0) return 0;
+  let diffCount = 0;
+  // Sample every 4th byte for speed (still accurate enough)
+  const step = 4;
+  let samples = 0;
+  for (let i = 0; i < len; i += step) {
+    samples++;
+    if (Math.abs(a[i] - b[i]) > 30) diffCount++; // pixel value changed by >30/255
+  }
+  return samples > 0 ? diffCount / samples : 0;
+}
+
 /** METHOD 1: Score change detection via scoreboard pixel diff */
 function detectScoreChanges(videoPath: string, duration: number): DetectedEvent[] {
   console.log('\n🔍 METHOD 1: Score change detection...');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-score-'));
-  const outPattern = path.join(tmpDir, 'sb_%04d.jpg');
+  const outPattern = path.join(tmpDir, 'sb_%04d.bmp');
 
   try {
-    // Extract 1fps scoreboard crops (top 15% of frame)
+    // Extract 1fps scoreboard crops — top-right 30% width, top 12% height (score numbers area)
+    // Output as BMP for raw pixel comparison (no JPEG compression artifacts)
     execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', 'crop=iw:ih*0.15:0:0,fps=1',
-      '-q:v', '5', outPattern, '-y'
+      '-vf', 'crop=iw*0.3:ih*0.12:iw*0.7:0,fps=1,scale=120:20',
+      '-q:v', '2', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
   } catch (err: any) {
     console.log(`   ⚠️ Scoreboard extraction failed: ${err.message}`);
     return [];
   }
 
-  const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort();
+  const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.bmp')).sort();
   console.log(`   📸 Extracted ${files.length} scoreboard frames`);
 
   if (files.length < 2) {
@@ -364,14 +376,9 @@ function detectScoreChanges(videoPath: string, duration: number): DetectedEvent[
     const curBuf = fs.readFileSync(filePath);
 
     if (prevBuf) {
-      // Compare file sizes as a fast proxy for pixel difference
-      // Significant scoreboard changes alter JPEG compression substantially
-      const sizeDiff = Math.abs(curBuf.length - prevBuf.length);
-      const avgSize = (curBuf.length + prevBuf.length) / 2;
-      const diffPct = sizeDiff / avgSize;
-
-      if (diffPct > 0.05) { // >5% size change = likely score change
-        events.push({ timestamp: i, source: 'score' }); // i = second in video
+      const diffPct = compareBufferPixels(prevBuf, curBuf);
+      if (diffPct > 0.15) { // >15% pixel difference = likely score change
+        events.push({ timestamp: i, source: 'score' });
       }
     }
     prevBuf = curBuf;
@@ -461,14 +468,17 @@ function mergeAndCapEvents(scoreEvents: DetectedEvent[], motionEvents: DetectedE
   return kept;
 }
 
-/** Extract 5 frames from a 10s clip around an event timestamp */
-function extractClipFrames(videoPath: string, eventTime: number, clipDir: string): string[] {
-  const startTime = Math.max(0, eventTime - 2);
-  const frames: string[] = [];
-  // Extract 5 frames at 0s, 2s, 4s, 6s, 8s into the clip
-  const offsets = [0, 2, 4, 6, 8];
+// 16 second window: event-4 to event+12, 5 frames at 3s intervals
+const CLIP_OFFSETS = [0, 3, 6, 9, 12]; // seconds from startTime
+const CLIP_PRE_EVENT = 4; // seconds before event
+const FRAME_LABELS = ['לפני המהלך', 'תחילת המהלך', 'שיא הפעולה', 'רגע ההחלטה', 'תוצאה'];
 
-  for (const offset of offsets) {
+/** Extract 5 frames from a 16s clip around an event timestamp */
+function extractClipFrames(videoPath: string, eventTime: number, clipDir: string): string[] {
+  const startTime = Math.max(0, eventTime - CLIP_PRE_EVENT);
+  const frames: string[] = [];
+
+  for (const offset of CLIP_OFFSETS) {
     const ts = startTime + offset;
     const outPath = path.join(clipDir, `event_${eventTime}_frame_${offset}.jpg`);
     try {
@@ -500,36 +510,35 @@ async function analyzeClip(
   jobId?: string,
 ): Promise<AnalysisResult> {
   const humanTime = formatTimestampHuman(eventTime);
-  const startTime = Math.max(0, eventTime - 2);
+  const startTime = Math.max(0, eventTime - CLIP_PRE_EVENT);
 
   const contentBlocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [];
-  const offsets = [0, 2, 4, 6, 8];
   clipFrames.forEach((framePath, i) => {
     const data = fs.readFileSync(framePath).toString('base64');
-    const frameTime = formatTimestampHuman(startTime + offsets[i]);
-    contentBlocks.push({ type: 'text' as const, text: `Frame ${i + 1} — ${frameTime}` });
+    const frameTime = formatTimestampHuman(startTime + CLIP_OFFSETS[i]);
+    const label = FRAME_LABELS[i] || '';
+    contentBlocks.push({ type: 'text' as const, text: `Frame ${i + 1} — ${frameTime} — ${label}` });
     contentBlocks.push({
       type: 'image' as const,
       source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
     });
   });
 
-  // Build frame timestamp list for Claude
-  const frameTimestamps = offsets.map(o => formatTimestampHuman(startTime + o));
+  const frameTimestamps = CLIP_OFFSETS.map(o => formatTimestampHuman(startTime + o));
+  const frame2Time = frameTimestamps[1]; // play start
+  const frame5Time = frameTimestamps[4]; // outcome
 
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
     text: `Clip around ${humanTime}. Frame timestamps: ${frameTimestamps.join(', ')}
 
-Write a note ONLY if you see a significant event.
-If nothing significant happened — return {"game":"","plays":[],"insights":[],"shotChart":{}}
+Frame 5 shows the OUTCOME of the play.
+Use Frame 5 to determine if the play succeeded or failed.
+Use Frame 2 timestamp (${frame2Time}) as start_time, Frame 5 timestamp (${frame5Time}) as end_time.
 
-If something DID happen:
-- Set start_time to the frame where the play begins
-- Set end_time to the frame where it ends
-- Use ONLY timestamps from this list: ${frameTimestamps.join(', ')}
+If no clear play with visible outcome → return {"game":"","plays":[],"insights":[],"shotChart":{}}
 
-Write in Hebrew. פוקוס: ${focus} | הקשר: ${context || 'אין'}
+פוקוס: ${focus} | הקשר: ${context || 'אין'}
 החזר JSON בלבד.`,
   };
 
