@@ -20,23 +20,31 @@ async function loadRecentCorrections(): Promise<string> {
   try {
     const recentJobs = await Job.find(
       { 'corrections.0': { $exists: true } },
-      { corrections: 1 }
-    ).sort({ createdAt: -1 }).limit(10);
+      { corrections: 1, createdAt: 1 }
+    ).sort({ createdAt: -1 }).limit(5);
 
     const corrections: string[] = [];
     for (const job of recentJobs) {
-      for (const c of (job as any).corrections || []) {
-        if (!c.correct && c.correction && c.correction.trim()) {
+      for (const c of job.corrections || []) {
+        if (!c.correct && c.correction && c.correction.trim().length > 3) {
           corrections.push(`- ${c.correction.trim()}`);
         }
       }
     }
 
     if (corrections.length === 0) return '';
+
     const last20 = corrections.slice(0, 20);
     console.log(`   📝 Loaded ${last20.length} coach corrections into prompt`);
-    return `\nCOACH CORRECTIONS FROM PREVIOUS GAMES — these are real examples of mistakes to avoid:\n${last20.join('\n')}\nUse these to improve play identification accuracy.\n`;
+
+    return `
+
+COACH CORRECTIONS — real examples from this team's games. Study these carefully and apply the same patterns:
+${last20.join('\n')}
+
+When you see a similar situation in the frames, use these corrections to identify the play correctly.`;
   } catch (e) {
+    console.log('   ⚠️ Could not load corrections:', e);
     return '';
   }
 }
