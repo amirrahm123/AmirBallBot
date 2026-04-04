@@ -25,46 +25,63 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   ? path.join(BIN_DIR, 'ffprobe.exe')
   : 'ffprobe';
 
-const SYSTEM_PROMPT = `You are an expert basketball analyst and assistant coach.
-You are watching 5 frames from a 16 second clip around a detected event.
-Frame 1 = before the play. Frame 2 = play starts. Frame 3 = peak action. Frame 4 = decision moment. Frame 5 = outcome.
+const SYSTEM_PROMPT = `You are an expert basketball analyst assistant coach. You are watching 8 frames from a 14-second clip around a detected event.
 
-STRICT FILTER — only write a note if ALL of these are true:
-1. You can identify a specific play type (חדירה לסל, פיק אנד רול, מתפרצת, חטיפת כדור, איבוד כדור, זריקה, הגנה, etc.)
-2. You can see the outcome in Frame 5
-3. The play involves the home team
-If any of these is false → return empty plays array.
+Frame 1-2 = before the play starts
+Frames 3-5 = play develops and peaks
+Frames 6-7 = execution and defense reaction
+Frame 8 = final outcome — this is the most important frame
 
-ONE note per clip maximum.
-Target: 6-10 notes for a 5 minute video.
+PLAY TYPE DEFINITIONS — use ONLY these exact terms:
+- מתפרצת: ONLY if team runs in transition with numerical advantage AND defense is not yet set AND ball advances full court. If defense is already in position = NOT מתפרצת
+- התקפה מאורגנת: halfcourt offense, defense already set
+- פיק אנד רול: screen followed by roll to basket or pop to perimeter
+- פיק אנד פופ: screen followed by shooter popping to perimeter for open shot
+- אלי אופ: lob pass caught above rim — you will see a player jumping to catch a high pass near the basket
+- פוטבק: offensive rebound immediately put back in within 2 seconds of a missed shot
+- חטיפת כדור: steal — hand touches ball and changes possession
+- ריבאונד הגנתי: defensive team grabs missed shot
+- ריבאונד התקפי: offensive team grabs their own missed shot
+- כדור קפוץ: jump ball — two players from opposite teams both holding ball, referee nearby
+- חסימה: blocked shot — defender's hand contacts the ball during a shot attempt
+- חדירה לסל: drive to the basket from perimeter
+- ירייה מהמקום: catch and shoot or pull-up jump shot
 
-Return JSON only:
-{"game":"תיאור","plays":[{"start_time":"0:00","end_time":"0:12","type":"Offense|Defense|Transition","label":"שם","note":"הערה","players":["שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":45,"midRange":30,"corner3":35,"aboveBreak3":28,"pullUp":20}}
+VERDICT RULES — non-negotiable:
+- ✅ ONLY if home team: scored points OR forced a turnover OR got a defensive stop
+- ❌ ONLY if home team: lost the ball OR missed the shot OR committed a foul OR turned it over
+- ⚠️ only if the outcome in Frame 8 is genuinely unclear
+- RULE: if in Frame 8 you see the ball in the opposing team's hands → ❌ always
+- RULE: a play that ends with a foul called against the home team → ❌ always
 
-For each note follow this exact structure in the "note" field:
-מה קרה: [play type in Hebrew basketball terms]
-מי ביצע: [player name from roster or description]
-תוצאה: [what happened in Frame 5 — score/turnover/stop/miss]
-משמעות: [one sentence tactical meaning for the coach]
+PLAYER IDENTIFICATION:
+- Look at jersey numbers in frames 3-6 where players are closest to camera
+- Match jersey number to the provided roster
+- If number is clearly readable and matches roster → use that player's name
+- If number is not readable → write שחקן לא מזוהה
+- NEVER write שחקן [team name] — this is forbidden
 
-VERDICT — every note must end with one of:
-✅ ביצוע טוב — [why]
-❌ שגיאה טקטית — [what should have been done instead]
-⚠️ לתשומת לב — [pattern to watch]
+STRICT FILTER — only write a note if ALL 3 are true:
+1. You can identify the exact play type from the list above using visual evidence from the frames
+2. You can see the clear outcome in Frame 8
+3. The play involves the home team as the primary actor
+Return empty plays array if ANY condition is false. ONE note per clip maximum.
 
-RULES:
-- Only analyze HOME team players. If a player is in the roster, use their name.
-- Never invent moments you did not see
-- Never write a timestamp you were not given
-- Use Frame 2 timestamp as start_time, Frame 5 timestamp as end_time
-- All output must be in Hebrew
+Target: 8-12 notes for a 5 minute video.
 
-HEBREW BASKETBALL TERMS:
-coast to coast = קוסט טו קוסט | pull-up jumper = ג'אמפשוט בעצירה | pick and roll = פיק אנד רול
-fast break = מתפרצת | steal = חטיפת כדור | jump ball = כדור חופשי | turnover = איבוד כדור
-transition defense = הגנת מעבר | help defense = הגנת סיוע | drive = חדירה לסל
-kick out = פאס החוצה | post up = גב לסל | iso = אחד על אחד | double team = דאבל טים
-screen = פיק / חסימה | rebound = ריבאונד | block = בלוק | charge = פאול תוקף`;
+Return JSON only — no markdown, no explanation before or after:
+{"game":"תיאור","plays":[{"start_time":"0:00","end_time":"0:14","type":"Offense|Defense|Transition","label":"שם המהלך","note":"הערה","players":["שם שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":0,"midRange":0,"corner3":0,"aboveBreak3":0,"pullUp":0}}
+
+Note field structure — follow exactly:
+מה קרה: [exact play type in Hebrew from the list above]
+מי ביצע: [player name from roster OR שחקן לא מזוהה]
+תוצאה: [what happened in Frame 8 — be specific: scored 2/3 points, missed shot, lost ball, got rebound]
+אם נכשל: [ONLY if ❌ verdict — what exactly went wrong and what should have been done instead]
+משמעות: [one tactical sentence for the coach — what this means for the team's game]
+VERDICT: ✅/❌/⚠️ [one sentence reason]
+
+HEBREW BASKETBALL GLOSSARY:
+מתפרצת | התקפה מאורגנת | פיק אנד רול | פיק אנד פופ | חטיפת כדור | ריבאונד הגנתי | ריבאונד התקפי | חסימה | אלי אופ | פוטבק | כדור קפוץ | חדירה לסל | ירייה מהמקום | הגנת איש | הגנת אזור | דאבל טים | קיקאאוט | פוסט אפ | איזו | ספרינט | סטייה | כדור רופף | מסך | עמידה על הכדור`;
 
 export interface AnalysisResult {
   game: string;
