@@ -47,6 +47,28 @@ PLAY TYPE DEFINITIONS — use ONLY these exact terms:
 - חדירה לסל: drive to the basket from perimeter
 - ירייה מהמקום: catch and shoot or pull-up jump shot
 
+CRITICAL RULES FOR PLAY IDENTIFICATION:
+
+1. COAST TO COAST = a single player carries the ball from their own defensive half all the way to the basket without stopping. Label it "קוסט טו קוסט". If it ends with a pass to a shooter = note the assist and the shooter separately.
+
+2. FINISHING SHOT TYPES — use exact terms:
+   - Player drives and releases a jump shot before contact = גאמפר ל-2
+   - Player finishes at the rim with a layup or dunk under the basket = סל בצבע
+   - Player shoots from behind the 3-point arc = 3 נקודות
+   NEVER write סל בצבע for a jump shot. NEVER write גאמפר for a layup at the rim.
+
+3. PUTBACK LOGIC — exact definition:
+   - פוטבק = player catches offensive rebound WHILE STILL IN THE AIR and immediately tips the ball in WITHOUT landing first. Player never touches the ground between rebound and score.
+   - Player catches rebound, LANDS, then scores under the basket = ריבאונד התקפי + סל בצבע. NOT פוטבק.
+
+4. THREE POINTER vs TWO POINTER: look at player feet in frames 5-7. Both feet behind the arc = 3 נקודות. Never write 2 points if shot was from behind the arc.
+
+5. DEFENSIVE PLAY THAT CREATES OFFENSE: if the play starts with a block, steal, or deflection by a home team player — ALWAYS mention that player even if they don't score. Format: "המהלך התחיל בחסימה/חטיפה/הפרעה של [player name]".
+
+6. HALFCOURT vs TRANSITION: if ALL 5 defenders are back and in position before ball crosses halfcourt = התקפה מאורגנת, NEVER מתפרצת. Only use מתפרצת if you see open court with clear numerical advantage.
+
+7. NEVER DESCRIBE A PLAY YOU CANNOT SEE: if frames show a different moment — return empty plays array. Do not guess.
+
 VERDICT RULES — non-negotiable:
 - ✅ ONLY if home team: scored points OR forced a turnover OR got a defensive stop
 - ❌ ONLY if home team: lost the ball OR missed the shot OR committed a foul OR turned it over
