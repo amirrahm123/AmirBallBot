@@ -426,21 +426,40 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
       }
     }
 
+    let lastConfirmedScore: [number, number] | null = null;
+    let lastEventTimestamp = -999;
+
     for (const candidateIdx of candidates) {
       const prevScore = await getScore(candidateIdx - 1);
       const curScore = await getScore(candidateIdx);
 
       if (prevScore && curScore) {
-        // Both frames have readable scores — check if score changed
-        if (prevScore[0] !== curScore[0] || prevScore[1] !== curScore[1]) {
-          console.log(`   🏀 Score change at ${candidateIdx}s: ${prevScore.join('-')} → ${curScore.join('-')}`);
-          events.push({ timestamp: candidateIdx, source: 'score' });
+        // Both frames have readable scores — validate the change
+        const scoreChanged = prevScore[0] !== curScore[0] || prevScore[1] !== curScore[1];
+        if (!scoreChanged) continue;
+
+        // Scores can only increase, never decrease
+        if (curScore[0] < prevScore[0] || curScore[1] < prevScore[1]) continue;
+
+        // Max +3 points per score event (a 3-pointer is the max single play)
+        const homeDiff = curScore[0] - prevScore[0];
+        const awayDiff = curScore[1] - prevScore[1];
+        if (homeDiff > 3 || awayDiff > 3) continue;
+
+        // Also validate against last confirmed score if available
+        if (lastConfirmedScore) {
+          if (curScore[0] < lastConfirmedScore[0] || curScore[1] < lastConfirmedScore[1]) continue;
         }
-      } else if (!prevScore && !curScore) {
-        // OCR failed on both — fall back to pixel diff (already passed threshold)
+
+        // Minimum 20 seconds between consecutive score change events
+        if (candidateIdx - lastEventTimestamp < 20) continue;
+
+        console.log(`   🏀 Score change at ${candidateIdx}s: ${prevScore.join('-')} → ${curScore.join('-')}`);
         events.push({ timestamp: candidateIdx, source: 'score' });
+        lastConfirmedScore = curScore;
+        lastEventTimestamp = candidateIdx;
       }
-      // If only one readable: skip (probably camera transition, not real score change)
+      // If OCR fails on either frame → skip (no more pixel-diff fallback, it's too noisy)
     }
   } finally {
     await worker.terminate();
@@ -461,7 +480,7 @@ function detectMotionBursts(videoPath: string): DetectedEvent[] {
   try {
     const output = execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', "select='gt(scene,0.4)',showinfo",
+      '-vf', "select='gt(scene,0.25)',showinfo",
       '-vsync', 'vfr',
       '-f', 'null', '-'
     ], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300000 });
@@ -520,11 +539,11 @@ function mergeAndCapEvents(scoreEvents: DetectedEvent[], motionEvents: DetectedE
   // Sort by time
   kept.sort((a, b) => a - b);
 
-  // Cap at MAX_CLIPS
-  if (kept.length > MAX_CLIPS) {
-    console.log(`   ⚠️ ${kept.length} events detected, capping to ${MAX_CLIPS}`);
-    // Keep score-priority order: the first MAX_CLIPS were already priority-sorted
-    return kept.slice(0, MAX_CLIPS);
+  // Dynamic cap: 20 for videos under 10min, MAX_CLIPS for longer
+  const cap = duration < 600 ? 20 : MAX_CLIPS;
+  if (kept.length > cap) {
+    console.log(`   ⚠️ ${kept.length} events detected, capping to ${cap}`);
+    return kept.slice(0, cap);
   }
 
   return kept;
