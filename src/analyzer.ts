@@ -463,7 +463,7 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
     firstFrames.forEach((f, i) => {
       fs.copyFileSync(path.join(tmpDir, f), path.join(debugDir, `debug_frame_${i}.png`));
     });
-    console.log(`   🔬 Saved 3 debug scoreboard frames to ${debugDir}`);
+    console.log(`   🔬 Debug scoreboard frames saved to ${debugDir} — crop: 550x60 at 730,600`);
   } catch (e) {}
 
   if (files.length < 2) {
