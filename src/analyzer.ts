@@ -16,6 +16,31 @@ export async function updateJobProgress(jobId: string, progress: number, progres
   }
 }
 
+async function loadRecentCorrections(): Promise<string> {
+  try {
+    const recentJobs = await Job.find(
+      { 'corrections.0': { $exists: true } },
+      { corrections: 1 }
+    ).sort({ createdAt: -1 }).limit(10);
+
+    const corrections: string[] = [];
+    for (const job of recentJobs) {
+      for (const c of (job as any).corrections || []) {
+        if (!c.correct && c.correction && c.correction.trim()) {
+          corrections.push(`- ${c.correction.trim()}`);
+        }
+      }
+    }
+
+    if (corrections.length === 0) return '';
+    const last20 = corrections.slice(0, 20);
+    console.log(`   📝 Loaded ${last20.length} coach corrections into prompt`);
+    return `\nCOACH CORRECTIONS FROM PREVIOUS GAMES — these are real examples of mistakes to avoid:\n${last20.join('\n')}\nUse these to improve play identification accuracy.\n`;
+  } catch (e) {
+    return '';
+  }
+}
+
 // ffmpeg/ffprobe: use local Windows binaries if available, otherwise system-installed (Linux/Railway)
 const BIN_DIR = path.join(__dirname, '..', 'bin');
 const FFMPEG = fs.existsSync(path.join(BIN_DIR, 'ffmpeg.exe'))
@@ -123,8 +148,9 @@ function getClient(): Anthropic {
 /** Build system prompt with Anthropic prompt caching enabled.
  *  The system prompt + roster are cached across calls in the same session,
  *  reducing input token costs by ~90% on repeated calls. */
-function buildCachedSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?: string): Anthropic.TextBlockParam[] {
+function buildCachedSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?: string, corrections?: string): Anthropic.TextBlockParam[] {
   let prompt = SYSTEM_PROMPT;
+  if (corrections) prompt += corrections;
   if (roster && roster.length > 0) {
     const home = teamName || 'הקבוצה שלנו';
     const away = awayTeam || 'היריב';
@@ -653,6 +679,7 @@ async function analyzeClip(
   teamName?: string,
   awayTeam?: string,
   jobId?: string,
+  corrections?: string,
 ): Promise<AnalysisResult> {
   const humanTime = formatTimestampHuman(eventTime);
   const startTime = Math.max(0, eventTime - CLIP_PRE_EVENT);
@@ -695,7 +722,7 @@ If no clear play with visible outcome → return {"game":"","plays":[],"insights
   const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: buildCachedSystemPrompt(roster, teamName, awayTeam),
+    system: buildCachedSystemPrompt(roster, teamName, awayTeam, corrections),
     messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
   }, jobId);
 
@@ -766,6 +793,7 @@ async function analyzeVideoEvents(
   if (jobId) await updateJobProgress(jobId, 25, `נמצאו ${eventTimestamps.length} רגעים — מנתח...`);
 
   // Step 2: Extract clip frames and analyze each event
+  const corrections = await loadRecentCorrections();
   const client = getClient();
   const clipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-clips-'));
 
@@ -791,7 +819,7 @@ async function analyzeVideoEvents(
     }
 
     // Analyze the clip
-    const clipResult = await analyzeClip(client, clipFrames, eventTime, context, focus, roster, teamName, awayTeam, jobId);
+    const clipResult = await analyzeClip(client, clipFrames, eventTime, context, focus, roster, teamName, awayTeam, jobId, corrections);
 
     if (clipResult.plays) allPlays.push(...clipResult.plays);
     if (clipResult.insights) allInsights.push(...clipResult.insights);
