@@ -203,6 +203,16 @@ ANALYZE:
 - Any play where a tactical advantage was created OR missed
 
 ═══════════════════════════
+STRICT FILTER
+═══════════════════════════
+
+Write a note if BOTH are true:
+1. You can see basketball action involving the home team
+2. There is a visible outcome in Frame 8
+
+When in doubt — write the note. A note that is slightly imprecise is better than no note. Target is 8-10 notes per 5 minutes. If you are writing fewer than 5 notes you are being too strict.
+
+═══════════════════════════
 INSIGHTS — 3 TO 4 PER VIDEO
 ═══════════════════════════
 
