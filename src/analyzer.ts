@@ -592,6 +592,45 @@ function detectMotionBursts(videoPath: string): DetectedEvent[] {
   return events;
 }
 
+function detectWhistles(videoPath: string): DetectedEvent[] {
+  console.log('\n🔍 METHOD 3: Audio whistle detection...');
+  try {
+    let stderr = '';
+    try {
+      execFileSync(FFMPEG, [
+        '-i', videoPath,
+        '-af', 'bandpass=f=3000:width_type=h:w=1000,astats=metadata=1:reset=1:length=0.5',
+        '-f', 'null', '-'
+      ], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300000 });
+    } catch (err: any) {
+      stderr = err.stderr || '';
+    }
+
+    const events: DetectedEvent[] = [];
+    const lines = stderr.split('\n');
+    let currentTime = 0;
+
+    for (const line of lines) {
+      const timeMatch = line.match(/pts_time:([\d.]+)/);
+      if (timeMatch) currentTime = parseFloat(timeMatch[1]);
+
+      const rmsMatch = line.match(/lavfi\.astats\.Overall\.RMS_level=(-?[\d.]+)/);
+      if (rmsMatch) {
+        const rms = parseFloat(rmsMatch[1]);
+        if (rms > -25) {
+          events.push({ timestamp: Math.floor(currentTime), source: 'motion' });
+        }
+      }
+    }
+
+    console.log(`   ✅ Detected ${events.length} whistle/audio spike events`);
+    return events;
+  } catch (err: any) {
+    console.log(`   ⚠️ Whistle detection failed: ${err.message?.substring(0, 100)}`);
+    return [];
+  }
+}
+
 /** Merge events from both methods, deduplicate within 10s, sort, and cap */
 function mergeAndCapEvents(scoreEvents: DetectedEvent[], motionEvents: DetectedEvent[], duration: number): number[] {
   // Priority: score changes first, then motion bursts
@@ -777,7 +816,9 @@ async function analyzeVideoEvents(
   const resolution = getVideoResolution(videoPath);
   const scoreEvents = await detectScoreChanges(videoPath, duration);
   const motionEvents = detectMotionBursts(videoPath);
-  const eventTimestamps = mergeAndCapEvents(scoreEvents, motionEvents, duration);
+  const whistleEvents = detectWhistles(videoPath);
+  const allMotionEvents = [...motionEvents, ...whistleEvents];
+  const eventTimestamps = mergeAndCapEvents(scoreEvents, allMotionEvents, duration);
 
   if (eventTimestamps.length === 0) {
     console.log('   ⚠️ No events detected — falling back to equal interval sampling');
