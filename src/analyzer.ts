@@ -622,8 +622,6 @@ async function analyzeClip(
   });
 
   const frameTimestamps = CLIP_OFFSETS.map(o => formatTimestampHuman(startTime + o));
-  const frame2Time = frameTimestamps[1]; // play start
-  const frame5Time = frameTimestamps[4]; // outcome
 
   const textBlock: Anthropic.TextBlockParam = {
     type: 'text',
@@ -660,15 +658,20 @@ If no clear play with visible outcome → return {"game":"","plays":[],"insights
   // Cleanup processed frames
   processedPaths.forEach(f => { try { fs.unlinkSync(f); } catch {} });
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    console.warn(`   ⚠️ No JSON for clip at ${humanTime}, skipping`);
+  const greedyMatch = text.match(/\{[\s\S]*\}/);
+  if (!greedyMatch) {
+    console.warn(`   ⚠️ No JSON found for clip at ${humanTime}, skipping`);
     return { game: '', plays: [], insights: [], shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 } };
   }
   try {
-    return JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(greedyMatch[0]);
+    if (!parsed.plays) parsed.plays = [];
+    if (!parsed.insights) parsed.insights = [];
+    if (!parsed.shotChart) parsed.shotChart = { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 };
+    return parsed;
   } catch (e) {
-    console.warn(`   ⚠️ JSON parse failed for clip at ${humanTime}, skipping. Error: ${e}`);
+    console.warn(`   ⚠️ JSON parse failed for clip at ${humanTime}: ${e}`);
+    console.warn(`   Raw text sample: ${text.substring(0, 200)}`);
     return { game: '', plays: [], insights: [], shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 } };
   }
 }
