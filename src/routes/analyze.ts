@@ -177,4 +177,26 @@ router.get('/debug/scoreboard/:index', (_req: Request, res: Response) => {
   }
 });
 
+router.post('/correction', async (req: Request, res: Response) => {
+  try {
+    const { jobId, playIndex, correct, correction } = req.body;
+    await Job.updateOne(
+      { jobId },
+      { $push: { corrections: { playIndex, correct, correction: correction || '', createdAt: new Date() } } }
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/corrections/:jobId', async (req: Request, res: Response) => {
+  try {
+    const job = await Job.findOne({ jobId: req.params.jobId });
+    res.json({ corrections: (job as any)?.corrections || [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

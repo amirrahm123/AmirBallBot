@@ -478,6 +478,7 @@ textarea{resize:vertical;min-height:80px}
 // Railway backend URL — all API calls go here
 const API = 'https://amirballbot-production.up.railway.app';
 let currentAnalysis = null;
+let currentJobId = null;
 let selectedPlayerId = null;
 let currentVideoUrl = null;   // original URL submitted for analysis
 let currentVideoType = null;  // 'youtube' | 'gdrive' | null
@@ -633,6 +634,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     if (data.error) throw new Error(data.error);
 
     if (!data.jobId) throw new Error('לא התקבל מזהה ג\'וב מהשרת');
+    currentJobId = data.jobId;
 
     updateProgress(5, 'הניתוח התחיל — ממתין לתוצאות...');
 
@@ -767,6 +769,15 @@ function renderAnalysis(data) {
       <div class="play-expanded hidden">
         <div class="play-note-body">${p.note||''}</div>
         ${(p.players||[]).length ? '<div class="play-note-players">שחקנים: ' + p.players.join(', ') + '</div>' : ''}
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+          <button onclick="event.stopPropagation();markCorrect(currentJobId, ${i})" id="btn-correct-${i}" style="background:#0d1f0d;border:1px solid #22c55e;color:#22c55e;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✅ נכון</button>
+          <button onclick="event.stopPropagation();toggleCorrection(${i})" style="background:#0d0d1f;border:1px solid #6366f1;color:#6366f1;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✏️ תקן</button>
+          <span id="correction-status-${i}" style="font-size:11px;color:#666;"></span>
+        </div>
+        <div id="correction-box-${i}" style="display:none;margin-top:6px;">
+          <input type="text" id="correction-text-${i}" placeholder="מה באמת קרה? שורה אחת" onclick="event.stopPropagation()" style="width:100%;padding:6px 10px;background:#111;border:1px solid #333;border-radius:6px;color:#fff;font-size:13px;direction:rtl;box-sizing:border-box;" />
+          <button onclick="event.stopPropagation();saveCorrection(currentJobId, ${i})" style="margin-top:4px;background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;">שמור</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -988,6 +999,43 @@ function formatDisplayTime(t) {
   }
   // Already "M:SS" or "MM:SS"
   return t;
+}
+
+// === Coach Corrections ===
+async function markCorrect(jobId, playIndex) {
+  try {
+    await fetch(API + '/api/analyze/correction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, playIndex, correct: true })
+    });
+    const btn = document.getElementById('btn-correct-' + playIndex);
+    if (btn) { btn.textContent = '✅ נכון ✓'; btn.style.background = '#14532d'; }
+    const status = document.getElementById('correction-status-' + playIndex);
+    if (status) status.textContent = 'נשמר';
+  } catch(e) { console.error(e); }
+}
+
+function toggleCorrection(playIndex) {
+  const box = document.getElementById('correction-box-' + playIndex);
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveCorrection(jobId, playIndex) {
+  const input = document.getElementById('correction-text-' + playIndex);
+  if (!input || !input.value.trim()) return;
+  try {
+    await fetch(API + '/api/analyze/correction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, playIndex, correct: false, correction: input.value.trim() })
+    });
+    const box = document.getElementById('correction-box-' + playIndex);
+    if (box) box.style.display = 'none';
+    const status = document.getElementById('correction-status-' + playIndex);
+    if (status) status.textContent = '✓ תיקון נשמר';
+    input.value = '';
+  } catch(e) { console.error(e); }
 }
 
 // === Upload Screen Roster ===

@@ -143,6 +143,7 @@ export interface IJob extends Document {
   progressMessage: string;
   result: any;
   error: string;
+  corrections: { playIndex: number; correct: boolean; correction: string; createdAt: Date }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -154,6 +155,7 @@ const JobSchema = new Schema<IJob>({
   progressMessage: { type: String, default: '' },
   result: { type: Schema.Types.Mixed, default: null },
   error: { type: String, default: '' },
+  corrections: [{ playIndex: { type: Number }, correct: { type: Boolean }, correction: { type: String, default: '' }, createdAt: { type: Date, default: Date.now } }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
