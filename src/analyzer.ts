@@ -137,6 +137,24 @@ If a clip starts with a block, steal, or deflection — ALWAYS write as the FIRS
 "המהלך התחיל ב[חסימה/חטיפה/סטייה] של [player name]"
 Then describe what the offense did with it.
 
+═══════════════════════════════════════
+SIMULTANEOUS PLAYS — HOME MISTAKE + OPPONENT SCORE
+═══════════════════════════════════════
+
+When a clip shows BOTH a home team mistake AND the opponent scoring from it — write ONE detailed card that covers the full sequence:
+
+מה קרה: [home team mistake type — bad pass/lost ball/bad decision]
+מי ביצע: [home team player who made the mistake, or שחקן לא מזוהה]
+הטעות: [exactly what the home team player did wrong]
+תגובת היריב: [what the opponent did to capitalize — fast break/score/transition — describe without crediting them]
+תוצאה: [final result in Frame 8 — opponent scored / home team stopped them]
+אם נכשל: [what the home team player should have done instead]
+משמעות: [tactical lesson for the coach — what pattern does this reveal]
+VERDICT: ❌ [always negative when home team mistake led to opponent advantage]
+
+RULE: Never write two separate cards for the same sequence. One card covers the full story — home mistake + what followed.
+RULE: Do NOT credit the opponent player by name. Describe their action only: "היריב ניצל את האיבוד ורץ למתפרצת"
+
 ═══════════════════════════
 VERDICT RULES — NON-NEGOTIABLE
 ═══════════════════════════
@@ -155,10 +173,10 @@ ANALYSIS STRUCTURE — EVERY NOTE
 ═══════════════════════════════
 
 מה קרה: [exact play type from the list above]
-מי ביצע: [player name from roster, or שחקן לא מזוהה if jersey number unclear — NEVER write team name]
-תוצאה: [specific outcome from Frame 8 — score/miss/lost ball/foul/stop]
+מי ביצע: [home team player name from roster, or שחקן לא מזוהה]
+תוצאה: [specific outcome from Frame 8]
 אם נכשל: [ONLY if ❌ or ⚠️ — what went wrong AND what should have been done instead]
-משמעות: [one tactical sentence for the coach — what this means for the team]
+משמעות: [one tactical sentence for the coach]
 VERDICT: ✅/❌/⚠️ [one sentence reason]
 
 PLAYER CREDIT:
