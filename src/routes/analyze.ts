@@ -167,4 +167,14 @@ router.get('/job/:jobId', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/debug/scoreboard/:index', (_req: Request, res: Response) => {
+  const idx = _req.params.index;
+  const imgPath = `/tmp/ballbot-debug-scoreboard/debug_frame_${idx}.png`;
+  if (fs.existsSync(imgPath)) {
+    res.sendFile(imgPath);
+  } else {
+    res.status(404).json({ error: 'No debug frame found. Run an analysis first.' });
+  }
+});
+
 export default router;

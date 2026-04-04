@@ -431,6 +431,16 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
   const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort();
   console.log(`   📸 Extracted ${files.length} scoreboard frames`);
 
+  try {
+    const debugDir = '/tmp/ballbot-debug-scoreboard';
+    if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir);
+    const firstFrames = files.slice(0, 3);
+    firstFrames.forEach((f, i) => {
+      fs.copyFileSync(path.join(tmpDir, f), path.join(debugDir, `debug_frame_${i}.png`));
+    });
+    console.log(`   🔬 Saved 3 debug scoreboard frames to ${debugDir}`);
+  } catch (e) {}
+
   if (files.length < 2) {
     files.forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch {} });
     return [];
