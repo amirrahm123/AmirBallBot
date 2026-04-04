@@ -386,7 +386,8 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
     const curBuf = fs.readFileSync(path.join(tmpDir, files[i]));
     if (prevBuf) {
       const diff = compareBufferPixels(prevBuf, curBuf);
-      if (diff > 0.18) candidates.push(i);
+      console.log(`   📊 Pixel diff frame ${i}: ${diff.toFixed(3)}`);
+      if (diff > 0.12) candidates.push(i);
     }
     prevBuf = curBuf;
   }
@@ -469,7 +470,7 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
   files.forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch {} });
   try { fs.rmdirSync(tmpDir); } catch {}
 
-  console.log(`   ✅ OCR read scores on ${ocrSuccessCount} frames, detected ${events.length} score changes`);
+  console.log(`   ✅ OCR: ${files.length} frames, ${candidates.length} candidates after diff filter, ${ocrSuccessCount} readable scores, ${events.length} score changes`);
   return events;
 }
 
@@ -493,6 +494,7 @@ function detectMotionBursts(videoPath: string): DetectedEvent[] {
   while ((match = ptsRegex.exec(stderr)) !== null) {
     events.push({ timestamp: Math.floor(parseFloat(match[1])), source: 'motion' });
   }
+  console.log(`   🔍 Motion stderr length: ${stderr.length} chars, pts_time matches: ${events.length}`);
   console.log(`   ✅ Detected ${events.length} motion burst events`);
   return events;
 }
