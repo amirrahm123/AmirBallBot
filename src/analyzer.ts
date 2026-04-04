@@ -419,7 +419,7 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
     // Extract 1fps scoreboard crops — top 15% of frame at readable resolution
     execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', 'crop=iw:ih*0.08:0:ih*0.82,fps=1,scale=iw:-1',
+      '-vf', 'crop=iw*0.45:ih*0.08:iw*0.55:ih*0.80,fps=1,scale=640:-1',
       '-q:v', '2', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
     console.log(`   📐 Scoreboard crop: bottom area ih*0.08 starting at ih*0.82`);
