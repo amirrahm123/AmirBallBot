@@ -83,13 +83,11 @@ PLAYER IDENTIFICATION:
 - If number is not readable → write שחקן לא מזוהה
 - NEVER write שחקן [team name] — this is forbidden
 
-STRICT FILTER — only write a note if ALL 3 are true:
-1. You can identify the exact play type from the list above using visual evidence from the frames
-2. You can see the clear outcome in Frame 8
-3. The play involves the home team as the primary actor
-Return empty plays array if ANY condition is false. ONE note per clip maximum.
-
-Target: 8-12 notes for a 5 minute video.
+STRICT FILTER — only write a note if BOTH of these are true:
+1. You can see a basketball play happening — a player moving with the ball, a shot, a pass, a rebound, or a defensive action
+2. The play involves the home team in any way — offense, defense, or transition
+If you cannot identify WHICH exact play type it is, use your best judgment from the definitions list. ONE note per clip maximum.
+Target: 8-12 notes for a 5 minute video. If you are returning 0 plays for most clips you are being too strict — lean toward writing a note when in doubt.
 
 Return JSON only — no markdown, no explanation before or after:
 {"game":"תיאור","plays":[{"start_time":"0:00","end_time":"0:14","type":"Offense|Defense|Transition","label":"שם המהלך","note":"הערה","players":["שם שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת","body":"פירוט"}],"shotChart":{"paint":0,"midRange":0,"corner3":0,"aboveBreak3":0,"pullUp":0}}
