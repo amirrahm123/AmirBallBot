@@ -328,6 +328,25 @@ function getVideoDuration(videoPath: string): number {
   return parseFloat(durationStr);
 }
 
+function getVideoResolution(videoPath: string): { width: number; height: number } {
+  try {
+    const output = execFileSync(FFPROBE, [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'csv=p=0',
+      videoPath
+    ], { encoding: 'utf-8', timeout: 15000 }).trim();
+    const [width, height] = output.split(',').map(Number);
+    if (width && height) {
+      console.log(`   📐 Video resolution: ${width}x${height}`);
+      return { width, height };
+    }
+  } catch {}
+  console.log(`   📐 Could not detect resolution, using default 1280x720`);
+  return { width: 1280, height: 720 };
+}
+
 /** Format seconds as human-readable "M:SS" (e.g. 140 → "2:20") */
 function formatTimestampHuman(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -380,7 +399,7 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
     // Extract 1fps scoreboard crops — top 15% of frame at readable resolution
     execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', 'crop=iw:ih*0.15:0:0,fps=1,scale=640:-1',
+      '-vf', 'crop=iw:ih*0.15:0:0,fps=1,scale=iw:-1',
       '-q:v', '2', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
   } catch (err: any) {
@@ -554,7 +573,7 @@ const CLIP_PRE_EVENT = 4; // seconds before event
 const FRAME_LABELS = ['לפני המהלך', 'תחילת פעולה', 'פיתוח', 'שיא', 'החלטה', 'ביצוע', 'תגובה', 'תוצאה'];
 
 /** Extract 5 frames from a 16s clip around an event timestamp */
-function extractClipFrames(videoPath: string, eventTime: number, clipDir: string): string[] {
+function extractClipFrames(videoPath: string, eventTime: number, clipDir: string, resolution?: { width: number; height: number }): string[] {
   const startTime = Math.max(0, eventTime - CLIP_PRE_EVENT);
   const frames: string[] = [];
 
@@ -562,9 +581,10 @@ function extractClipFrames(videoPath: string, eventTime: number, clipDir: string
     const ts = startTime + offset;
     const outPath = path.join(clipDir, `event_${eventTime}_frame_${offset}.jpg`);
     try {
+      const scaleFilter = resolution ? `scale=${resolution.width}:${resolution.height}` : 'scale=1280:720';
       execFileSync(FFMPEG, [
         '-ss', String(ts), '-i', videoPath,
-        '-frames:v', '1', '-q:v', '1', outPath, '-y'
+        '-frames:v', '1', '-vf', scaleFilter, '-q:v', '1', outPath, '-y'
       ], { stdio: 'pipe', timeout: 15000 });
       if (fs.existsSync(outPath)) frames.push(outPath);
     } catch {}
@@ -696,6 +716,7 @@ async function analyzeVideoEvents(
   // Step 1: Detect events
   if (jobId) await updateJobProgress(jobId, 15, 'מזהה רגעים חשובים בסרטון...');
 
+  const resolution = getVideoResolution(videoPath);
   const scoreEvents = await detectScoreChanges(videoPath, duration);
   const motionEvents = detectMotionBursts(videoPath);
   const eventTimestamps = mergeAndCapEvents(scoreEvents, motionEvents, duration);
@@ -732,7 +753,7 @@ async function analyzeVideoEvents(
     console.log(`   📡 Clip ${clipNum}/${eventTimestamps.length}: event at ${humanTime}`);
 
     // Extract 5 frames for this clip
-    const clipFrames = extractClipFrames(videoPath, eventTime, clipDir);
+    const clipFrames = extractClipFrames(videoPath, eventTime, clipDir, resolution);
     if (clipFrames.length === 0) {
       console.log(`   ⚠️ No frames extracted for event at ${humanTime}, skipping`);
       continue;
