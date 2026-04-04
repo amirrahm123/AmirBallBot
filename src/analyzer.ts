@@ -448,7 +448,6 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
       '-vf', 'crop=550:60:730:600,fps=1,scale=640:-1,unsharp=5:5:2.0:5:5:0.0,eq=contrast=2.5:brightness=-0.05:saturation=0,format=gray',
       '-q:v', '1', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
-    console.log(`   📐 Scoreboard crop: bottom area ih*0.08 starting at ih*0.82`);
   } catch (err: any) {
     console.log(`   ⚠️ Scoreboard extraction failed: ${err.message}`);
     return [];
@@ -816,7 +815,12 @@ async function analyzeVideoEvents(
   const resolution = getVideoResolution(videoPath);
   const scoreEvents = await detectScoreChanges(videoPath, duration);
   const motionEvents = detectMotionBursts(videoPath);
-  const whistleEvents = detectWhistles(videoPath);
+  let whistleEvents: DetectedEvent[] = [];
+  try {
+    whistleEvents = detectWhistles(videoPath);
+  } catch (e) {
+    console.log('   ⚠️ Whistle detection skipped:', e);
+  }
   const allMotionEvents = [...motionEvents, ...whistleEvents];
   const eventTimestamps = mergeAndCapEvents(scoreEvents, allMotionEvents, duration);
 
