@@ -399,7 +399,7 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
     // Extract 1fps scoreboard crops — top 15% of frame at readable resolution
     execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', 'crop=iw:ih*0.15:0:0,fps=1,scale=iw:-1',
+      '-vf', 'crop=iw:ih*0.12:0:ih*0.88,fps=1,scale=iw:-1',
       '-q:v', '2', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
   } catch (err: any) {
