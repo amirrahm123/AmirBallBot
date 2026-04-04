@@ -645,8 +645,12 @@ If no clear play with visible outcome → return {"game":"","plays":[],"insights
     console.warn(`   ⚠️ No JSON for clip at ${humanTime}, skipping`);
     return { game: '', plays: [], insights: [], shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 } };
   }
-
-  return JSON.parse(jsonMatch[0]);
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    console.warn(`   ⚠️ JSON parse failed for clip at ${humanTime}, skipping. Error: ${e}`);
+    return { game: '', plays: [], insights: [], shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 } };
+  }
 }
 
 // ============================================================
