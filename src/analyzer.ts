@@ -102,6 +102,12 @@ CRITICAL RULES FOR PLAY IDENTIFICATION:
 
 7. NEVER DESCRIBE A PLAY YOU CANNOT SEE: if frames show a different moment — return empty plays array. Do not guess.
 
+8. INCOMPLETE FASTBREAK — DO NOT WRITE A NOTE: if a fastbreak or transition play results in NOTHING — no score, no foul, no clear advantage, possession just slows down — do NOT write a note for it at all. Return empty plays for that clip. Only write a fastbreak note if it ended with: a score ✅, a foul drawn ✅, a turnover forced ✅, or clearly failed with a lost ball ❌.
+
+9. FASTBREAK WITH TURNOVER: if the home team runs a fastbreak but LOSES the ball during it — write the note, label it מתפרצת שהסתיימה באיבוד כדור, verdict ❌, and explain exactly where it broke down.
+
+10. DEFENSIVE PLAY THAT STARTS THE POSSESSION: if the clip starts with a block, steal or deflection by a home team player — ALWAYS write that as the FIRST line of the note before describing the offensive play. Format: "המהלך התחיל ב[חסימה/חטיפה/סטייה] של [player name] על [opposing player if visible]". This is mandatory — never skip the defensive action that created the possession.
+
 VERDICT RULES — non-negotiable:
 - ✅ ONLY if home team: scored points OR forced a turnover OR got a defensive stop
 - ❌ ONLY if home team: lost the ball OR missed the shot OR committed a foul OR turned it over
