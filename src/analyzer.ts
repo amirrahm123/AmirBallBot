@@ -386,7 +386,7 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
     const curBuf = fs.readFileSync(path.join(tmpDir, files[i]));
     if (prevBuf) {
       const diff = compareBufferPixels(prevBuf, curBuf);
-      if (diff > 0.08) candidates.push(i); // lower threshold to catch more candidates for OCR
+      if (diff > 0.18) candidates.push(i);
     }
     prevBuf = curBuf;
   }
@@ -476,45 +476,25 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
 /** METHOD 2: Motion burst detection via ffmpeg scene detection */
 function detectMotionBursts(videoPath: string): DetectedEvent[] {
   console.log('\n🔍 METHOD 2: Motion burst detection...');
-
+  let stderr = '';
   try {
-    const output = execFileSync(FFMPEG, [
+    execFileSync(FFMPEG, [
       '-i', videoPath,
       '-vf', "select='gt(scene,0.25)',showinfo",
       '-vsync', 'vfr',
       '-f', 'null', '-'
     ], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300000 });
-
-    // Parse pts_time from stderr (ffmpeg writes showinfo to stderr)
-    // But execFileSync merges or may not capture stderr well, so try stdout too
-    const allOutput = output || '';
-    const events: DetectedEvent[] = [];
-    const ptsRegex = /pts_time:\s*([\d.]+)/g;
-    let match;
-    while ((match = ptsRegex.exec(allOutput)) !== null) {
-      events.push({ timestamp: Math.floor(parseFloat(match[1])), source: 'motion' });
-    }
-
-    console.log(`   ✅ Detected ${events.length} motion burst events`);
-    return events;
   } catch (err: any) {
-    // ffmpeg scene detection writes to stderr; capture it from the error
-    const stderr = err.stderr || '';
-    const events: DetectedEvent[] = [];
-    const ptsRegex = /pts_time:\s*([\d.]+)/g;
-    let match;
-    while ((match = ptsRegex.exec(stderr)) !== null) {
-      events.push({ timestamp: Math.floor(parseFloat(match[1])), source: 'motion' });
-    }
-
-    if (events.length > 0) {
-      console.log(`   ✅ Detected ${events.length} motion burst events (from stderr)`);
-      return events;
-    }
-
-    console.log(`   ⚠️ Motion detection failed: ${err.message}`);
-    return [];
+    stderr = err.stderr || '';
   }
+  const events: DetectedEvent[] = [];
+  const ptsRegex = /pts_time:\s*([\d.]+)/g;
+  let match;
+  while ((match = ptsRegex.exec(stderr)) !== null) {
+    events.push({ timestamp: Math.floor(parseFloat(match[1])), source: 'motion' });
+  }
+  console.log(`   ✅ Detected ${events.length} motion burst events`);
+  return events;
 }
 
 /** Merge events from both methods, deduplicate within 10s, sort, and cap */
