@@ -435,17 +435,62 @@ function parseScoreFromText(text: string): [number, number] | null {
   return null;
 }
 
-/** METHOD 1: Score change detection via OCR with pixel-diff fallback */
+/** AI-powered scoreboard position detection — asks Claude Haiku to find the scoreboard once per video */
+async function findScoreboardPosition(videoPath: string): Promise<{x: number, y: number, w: number, h: number}> {
+  const DEFAULT = { x: 0, y: 580, w: 1280, h: 100 };
+  try {
+    const tmpFrame = path.join(os.tmpdir(), 'ballbot-scoreboard-finder.jpg');
+    execFileSync(FFMPEG, [
+      '-ss', '10', '-i', videoPath,
+      '-frames:v', '1', '-q:v', '2', tmpFrame, '-y'
+    ], { stdio: 'pipe', timeout: 15000 });
+
+    const frameData = fs.readFileSync(tmpFrame).toString('base64');
+    const client = getClient();
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: frameData } },
+          { type: 'text' as const, text: 'Find the scoreboard/score overlay in this basketball game frame. Return JSON only with no other text: {"x": leftPixel, "y": topPixel, "w": widthPixels, "h": heightPixels} — the bounding box of the scoreboard showing team scores. The image is 1280x720.' }
+        ]
+      }]
+    });
+
+    const text = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) { try { fs.unlinkSync(tmpFrame); } catch {} return DEFAULT; }
+    const pos = JSON.parse(match[0]);
+    if (pos.x >= 0 && pos.y >= 0 && pos.w > 50 && pos.h > 10) {
+      console.log(`   🎯 Scoreboard found by AI at: x=${pos.x} y=${pos.y} w=${pos.w} h=${pos.h}`);
+      try { fs.unlinkSync(tmpFrame); } catch {}
+      return pos;
+    }
+    try { fs.unlinkSync(tmpFrame); } catch {}
+    return DEFAULT;
+  } catch (e) {
+    console.log(`   ⚠️ Scoreboard finder failed, using default crop`);
+    return DEFAULT;
+  }
+}
+
+/** METHOD 1: Score change detection via OCR with AI-detected scoreboard position */
 async function detectScoreChanges(videoPath: string, duration: number): Promise<DetectedEvent[]> {
   console.log('\n🔍 METHOD 1: Score change detection (OCR)...');
+
+  const sb = await findScoreboardPosition(videoPath);
+  const cropFilter = `crop=${sb.w}:${sb.h}:${sb.x}:${sb.y},fps=1,scale=640:-1,unsharp=5:5:2.0:5:5:0.0,eq=contrast=2.5:brightness=-0.05:saturation=0,format=gray`;
+  console.log(`   🎯 Using crop: ${sb.w}x${sb.h} at ${sb.x},${sb.y}`);
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-score-'));
   const outPattern = path.join(tmpDir, 'sb_%04d.png');
 
   try {
-    // Extract 1fps scoreboard crops — top 15% of frame at readable resolution
     execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', 'crop=550:60:730:600,fps=1,scale=640:-1,unsharp=5:5:2.0:5:5:0.0,eq=contrast=2.5:brightness=-0.05:saturation=0,format=gray',
+      '-vf', cropFilter,
       '-q:v', '1', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
   } catch (err: any) {
