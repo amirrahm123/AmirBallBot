@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import https from 'https';
+import Tesseract from 'tesseract.js';
 import { Job } from './database';
 
 /** Update job progress in MongoDB */
@@ -331,28 +332,38 @@ function compareBufferPixels(a: Buffer, b: Buffer): number {
   const len = Math.min(a.length, b.length);
   if (len === 0) return 0;
   let diffCount = 0;
-  // Sample every 4th byte for speed (still accurate enough)
   const step = 4;
   let samples = 0;
   for (let i = 0; i < len; i += step) {
     samples++;
-    if (Math.abs(a[i] - b[i]) > 30) diffCount++; // pixel value changed by >30/255
+    if (Math.abs(a[i] - b[i]) > 30) diffCount++;
   }
   return samples > 0 ? diffCount / samples : 0;
 }
 
-/** METHOD 1: Score change detection via scoreboard pixel diff */
-function detectScoreChanges(videoPath: string, duration: number): DetectedEvent[] {
-  console.log('\n🔍 METHOD 1: Score change detection...');
+/** Parse score from OCR text. Returns [homeScore, awayScore] or null. */
+function parseScoreFromText(text: string): [number, number] | null {
+  // Match patterns like "84 79", "84-79", "84 - 79", "84:79"
+  const match = text.match(/(\d{1,3})\s*[-–—:\s]\s*(\d{1,3})/);
+  if (!match) return null;
+  const a = parseInt(match[1]);
+  const b = parseInt(match[2]);
+  // Valid basketball scores: 0-200 range
+  if (a >= 0 && a <= 200 && b >= 0 && b <= 200) return [a, b];
+  return null;
+}
+
+/** METHOD 1: Score change detection via OCR with pixel-diff fallback */
+async function detectScoreChanges(videoPath: string, duration: number): Promise<DetectedEvent[]> {
+  console.log('\n🔍 METHOD 1: Score change detection (OCR)...');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-score-'));
-  const outPattern = path.join(tmpDir, 'sb_%04d.bmp');
+  const outPattern = path.join(tmpDir, 'sb_%04d.png');
 
   try {
-    // Extract 1fps scoreboard crops — top-right 30% width, top 12% height (score numbers area)
-    // Output as BMP for raw pixel comparison (no JPEG compression artifacts)
+    // Extract 1fps scoreboard crops — top 15% of frame at readable resolution
     execFileSync(FFMPEG, [
       '-i', videoPath,
-      '-vf', 'crop=iw*0.3:ih*0.12:iw*0.7:0,fps=1,scale=120:20',
+      '-vf', 'crop=iw:ih*0.15:0:0,fps=1,scale=640:-1',
       '-q:v', '2', outPattern, '-y'
     ], { stdio: 'pipe', timeout: Math.max(duration * 2000, 120000) });
   } catch (err: any) {
@@ -360,7 +371,7 @@ function detectScoreChanges(videoPath: string, duration: number): DetectedEvent[
     return [];
   }
 
-  const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.bmp')).sort();
+  const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort();
   console.log(`   📸 Extracted ${files.length} scoreboard frames`);
 
   if (files.length < 2) {
@@ -368,27 +379,78 @@ function detectScoreChanges(videoPath: string, duration: number): DetectedEvent[
     return [];
   }
 
-  const events: DetectedEvent[] = [];
+  // Pre-filter with pixel diff to find candidate frames (avoid OCR on every frame)
+  const candidates: number[] = [];
   let prevBuf: Buffer | null = null;
-
   for (let i = 0; i < files.length; i++) {
-    const filePath = path.join(tmpDir, files[i]);
-    const curBuf = fs.readFileSync(filePath);
-
+    const curBuf = fs.readFileSync(path.join(tmpDir, files[i]));
     if (prevBuf) {
-      const diffPct = compareBufferPixels(prevBuf, curBuf);
-      if (diffPct > 0.15) { // >15% pixel difference = likely score change
-        events.push({ timestamp: i, source: 'score' });
-      }
+      const diff = compareBufferPixels(prevBuf, curBuf);
+      if (diff > 0.08) candidates.push(i); // lower threshold to catch more candidates for OCR
     }
     prevBuf = curBuf;
+  }
+  console.log(`   🔎 ${candidates.length} candidate frames from pixel diff pre-filter`);
+
+  if (candidates.length === 0) {
+    // No pixel changes at all — nothing happened
+    files.forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch {} });
+    try { fs.rmdirSync(tmpDir); } catch {}
+    return [];
+  }
+
+  // OCR only the candidate frames and their predecessors
+  const events: DetectedEvent[] = [];
+  let ocrSuccessCount = 0;
+
+  // Create a Tesseract worker for batch processing
+  const worker = await Tesseract.createWorker('eng');
+
+  try {
+    const scoreCache = new Map<number, [number, number] | null>();
+
+    // OCR a frame and cache the result
+    async function getScore(frameIdx: number): Promise<[number, number] | null> {
+      if (scoreCache.has(frameIdx)) return scoreCache.get(frameIdx)!;
+      if (frameIdx < 0 || frameIdx >= files.length) return null;
+      const filePath = path.join(tmpDir, files[frameIdx]);
+      try {
+        const { data: { text } } = await worker.recognize(filePath);
+        const score = parseScoreFromText(text);
+        scoreCache.set(frameIdx, score);
+        if (score) ocrSuccessCount++;
+        return score;
+      } catch {
+        scoreCache.set(frameIdx, null);
+        return null;
+      }
+    }
+
+    for (const candidateIdx of candidates) {
+      const prevScore = await getScore(candidateIdx - 1);
+      const curScore = await getScore(candidateIdx);
+
+      if (prevScore && curScore) {
+        // Both frames have readable scores — check if score changed
+        if (prevScore[0] !== curScore[0] || prevScore[1] !== curScore[1]) {
+          console.log(`   🏀 Score change at ${candidateIdx}s: ${prevScore.join('-')} → ${curScore.join('-')}`);
+          events.push({ timestamp: candidateIdx, source: 'score' });
+        }
+      } else if (!prevScore && !curScore) {
+        // OCR failed on both — fall back to pixel diff (already passed threshold)
+        events.push({ timestamp: candidateIdx, source: 'score' });
+      }
+      // If only one readable: skip (probably camera transition, not real score change)
+    }
+  } finally {
+    await worker.terminate();
   }
 
   // Cleanup
   files.forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch {} });
   try { fs.rmdirSync(tmpDir); } catch {}
 
-  console.log(`   ✅ Detected ${events.length} score change events`);
+  console.log(`   ✅ OCR read scores on ${ocrSuccessCount} frames, detected ${events.length} score changes`);
   return events;
 }
 
@@ -608,7 +670,7 @@ async function analyzeVideoEvents(
   // Step 1: Detect events
   if (jobId) await updateJobProgress(jobId, 15, 'מזהה רגעים חשובים בסרטון...');
 
-  const scoreEvents = detectScoreChanges(videoPath, duration);
+  const scoreEvents = await detectScoreChanges(videoPath, duration);
   const motionEvents = detectMotionBursts(videoPath);
   const eventTimestamps = mergeAndCapEvents(scoreEvents, motionEvents, duration);
 
