@@ -532,9 +532,9 @@ function mergeAndCapEvents(scoreEvents: DetectedEvent[], motionEvents: DetectedE
 }
 
 // 16 second window: event-4 to event+12, 5 frames at 3s intervals
-const CLIP_OFFSETS = [0, 3, 6, 9, 12]; // seconds from startTime
+const CLIP_OFFSETS = [0, 2, 4, 6, 8, 10, 12, 14]; // seconds from startTime
 const CLIP_PRE_EVENT = 4; // seconds before event
-const FRAME_LABELS = ['לפני המהלך', 'תחילת המהלך', 'שיא הפעולה', 'רגע ההחלטה', 'תוצאה'];
+const FRAME_LABELS = ['לפני המהלך', 'תחילת פעולה', 'פיתוח', 'שיא', 'החלטה', 'ביצוע', 'תגובה', 'תוצאה'];
 
 /** Extract 5 frames from a 16s clip around an event timestamp */
 function extractClipFrames(videoPath: string, eventTime: number, clipDir: string): string[] {
@@ -547,7 +547,7 @@ function extractClipFrames(videoPath: string, eventTime: number, clipDir: string
     try {
       execFileSync(FFMPEG, [
         '-ss', String(ts), '-i', videoPath,
-        '-frames:v', '1', '-q:v', '2', outPath, '-y'
+        '-frames:v', '1', '-q:v', '1', outPath, '-y'
       ], { stdio: 'pipe', timeout: 15000 });
       if (fs.existsSync(outPath)) frames.push(outPath);
     } catch {}
@@ -612,9 +612,10 @@ async function analyzeClip(
     type: 'text',
     text: `Clip around ${humanTime}. Frame timestamps: ${frameTimestamps.join(', ')}
 
-Frame 5 shows the OUTCOME of the play.
-Use Frame 5 to determine if the play succeeded or failed.
-Use Frame 2 timestamp (${frame2Time}) as start_time, Frame 5 timestamp (${frame5Time}) as end_time.
+You have 8 frames covering 14 seconds.
+Frames 1-2 = before the play. Frames 3-5 = action develops. Frames 6-7 = execution. Frame 8 = final outcome.
+Use Frame 8 to determine if the play succeeded or failed.
+Use Frame 2 timestamp as start_time, Frame 8 timestamp as end_time.
 
 If no clear play with visible outcome → return {"game":"","plays":[],"insights":[],"shotChart":{}}
 
