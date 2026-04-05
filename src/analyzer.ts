@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { execSync, execFileSync } from 'child_process';
+import { execSync, execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -811,17 +811,18 @@ async function detectScoreChanges(videoPath: string, duration: number): Promise<
 /** METHOD 2: Motion burst detection via ffmpeg scene detection */
 function detectMotionBursts(videoPath: string): DetectedEvent[] {
   console.log('\n🔍 METHOD 2: Motion burst detection...');
-  let stderr = '';
-  try {
-    execFileSync(FFMPEG, [
-      '-i', videoPath,
-      '-vf', "select='gt(scene,0.25)',showinfo",
-      '-vsync', 'vfr',
-      '-f', 'null', '-'
-    ], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300000 });
-  } catch (err: any) {
-    stderr = err.stderr || '';
-  }
+  const result = spawnSync(FFMPEG, [
+    '-i', videoPath,
+    '-vf', "select='gt(scene,0.25)',showinfo",
+    '-vsync', 'vfr',
+    '-f', 'null', '-'
+  ], {
+    encoding: 'utf-8',
+    timeout: 300000,
+    maxBuffer: 10 * 1024 * 1024  // 10MB to handle long videos
+  });
+  const stderr = result.stderr || '';
+  console.log('🎬 Motion raw output (first 300 chars):', stderr.substring(0, 300));
   const events: DetectedEvent[] = [];
   const ptsRegex = /pts_time:\s*([\d.]+)/g;
   let match;
