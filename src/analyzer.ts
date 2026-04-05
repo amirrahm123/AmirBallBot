@@ -180,6 +180,7 @@ ANALYSIS STRUCTURE — EVERY NOTE
 
 מה קרה: [exact play type from the list above]
 מי ביצע: [home team player name from roster, or שחקן לא מזוהה]
+קבוצה: [team name that performed the action — identify by jersey color when provided in context]
 תוצאה: [specific outcome from Frame 8]
 אם נכשל: [ONLY if ❌ or ⚠️ — what went wrong AND what should have been done instead]
 משמעות: [one tactical sentence for the coach]
@@ -240,7 +241,7 @@ OUTPUT FORMAT — JSON ONLY
 ═══════════════════════════
 
 Return JSON only — no markdown, no explanation before or after:
-{"game":"תיאור קצר","plays":[{"start_time":"0:00","end_time":"0:14","type":"Offense|Defense|Transition","label":"שם המהלך","note":"הערה מלאה","players":["שם שחקן"]}],"insights":[{"type":"good|warn|bad","title":"כותרת קצרה","body":"פירוט טקטי"}],"shotChart":{"paint":0,"midRange":0,"corner3":0,"aboveBreak3":0,"pullUp":0}}
+{"game":"תיאור קצר","plays":[{"start_time":"0:00","end_time":"0:14","type":"Offense|Defense|Transition","label":"שם המהלך","note":"הערה מלאה","players":["שם שחקן"],"team":"שם קבוצה"}],"insights":[{"type":"good|warn|bad","title":"כותרת קצרה","body":"פירוט טקטי"}],"shotChart":{"paint":0,"midRange":0,"corner3":0,"aboveBreak3":0,"pullUp":0}}
 
 PLAY CLASSIFICATION:
 - Offense = halfcourt attack, defense already set
@@ -252,9 +253,14 @@ HEBREW BASKETBALL GLOSSARY:
 
 export interface AnalysisResult {
   game: string;
-  plays: { start_time: string; end_time: string; time?: string; type: string; label: string; note: string; players: string[] }[];
+  plays: { start_time: string; end_time: string; time?: string; type: string; label: string; note: string; players: string[]; team?: string }[];
   insights: { type: 'good' | 'warn' | 'bad'; title: string; body: string }[];
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
+}
+
+export interface JerseyColors {
+  teamA: { name: string; primaryColor: string; secondaryColor: string };
+  teamB: { name: string; primaryColor: string; secondaryColor: string };
 }
 
 export interface RosterPlayer {
@@ -270,7 +276,7 @@ function getClient(): Anthropic {
 /** Build system prompt with Anthropic prompt caching enabled.
  *  The system prompt + roster are cached across calls in the same session,
  *  reducing input token costs by ~90% on repeated calls. */
-function buildCachedSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?: string, corrections?: string): Anthropic.TextBlockParam[] {
+function buildCachedSystemPrompt(roster?: RosterPlayer[], teamName?: string, awayTeam?: string, corrections?: string, jerseyColors?: JerseyColors): Anthropic.TextBlockParam[] {
   let prompt = SYSTEM_PROMPT;
   if (corrections) prompt += corrections;
   if (roster && roster.length > 0) {
@@ -281,6 +287,10 @@ function buildCachedSystemPrompt(roster?: RosterPlayer[], teamName?: string, awa
 נתח רק את ${home}. אם ${away} מבקיע כתוב "הספגנו סל". אם לא בטוח מי השחקן כתוב "שחקן ${home}".
 רוסטר ${home}:
 ${rosterText}`;
+  }
+  if (jerseyColors) {
+    prompt += `\nקבוצה א' (${jerseyColors.teamA.name}) לובשת ${jerseyColors.teamA.primaryColor}. קבוצה ב' (${jerseyColors.teamB.name}) לובשת ${jerseyColors.teamB.primaryColor}.
+השתמש בצבעי הג'רזי לזיהוי איזו קבוצה מבצעת כל מהלך. מלא את שדה "team" בכל כרטיס מהלך עם שם הקבוצה המבצעת.`;
   }
   return [{
     type: 'text' as const,
@@ -598,6 +608,54 @@ async function findScoreboardPosition(videoPath: string): Promise<{x: number, y:
   }
 }
 
+/** AI-powered jersey color detection — asks Claude Haiku to identify each team's primary jersey color once per video */
+async function findJerseyColors(
+  videoPath: string,
+  homeTeam?: string,
+  awayTeam?: string,
+): Promise<JerseyColors | null> {
+  if (!homeTeam || !awayTeam) return null;
+  try {
+    const tmpFrame = path.join(os.tmpdir(), 'ballbot-jersey-finder.jpg');
+    execFileSync(FFMPEG, [
+      '-ss', '8', '-i', videoPath,
+      '-frames:v', '1', '-q:v', '2', tmpFrame, '-y'
+    ], { stdio: 'pipe', timeout: 15000 });
+
+    const frameData = fs.readFileSync(tmpFrame).toString('base64');
+    const client = getClient();
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: frameData } },
+          { type: 'text' as const, text: `Two teams are playing: ${homeTeam} and ${awayTeam}. Look at the players on court and identify the PRIMARY jersey color of each team. Return color names in Hebrew (e.g. כחול, לבן, אדום, שחור, צהוב, ירוק). Return JSON only with no other text: {"teamA":{"name":"${homeTeam}","primaryColor":"<hebrew color>","secondaryColor":"<hebrew color>"},"teamB":{"name":"${awayTeam}","primaryColor":"<hebrew color>","secondaryColor":"<hebrew color>"}}. If jersey colors are not clearly visible, return {"error":"unclear"}.` }
+        ]
+      }]
+    });
+
+    const text = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
+    try { fs.unlinkSync(tmpFrame); } catch {}
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    if (parsed.error) {
+      console.log(`   ⚠️ Jersey finder: frame unclear, continuing without colors`);
+      return null;
+    }
+    if (parsed.teamA?.primaryColor && parsed.teamB?.primaryColor) {
+      console.log(`   🎨 Jersey colors: ${homeTeam}=${parsed.teamA.primaryColor}, ${awayTeam}=${parsed.teamB.primaryColor}`);
+      return parsed as JerseyColors;
+    }
+    return null;
+  } catch (e) {
+    console.log(`   ⚠️ Jersey color finder failed, continuing without colors`);
+    return null;
+  }
+}
+
 /** METHOD 1: Score change detection via OCR with AI-detected scoreboard position */
 async function detectScoreChanges(videoPath: string, duration: number): Promise<DetectedEvent[]> {
   console.log('\n🔍 METHOD 1: Score change detection (OCR)...');
@@ -885,6 +943,7 @@ async function analyzeClip(
   awayTeam?: string,
   jobId?: string,
   corrections?: string,
+  jerseyColors?: JerseyColors,
 ): Promise<AnalysisResult> {
   const humanTime = formatTimestampHuman(eventTime);
   const startTime = Math.max(0, eventTime - CLIP_PRE_EVENT);
@@ -927,7 +986,7 @@ If no clear play with visible outcome → return {"game":"","plays":[],"insights
   const response = await callClaudeWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: buildCachedSystemPrompt(roster, teamName, awayTeam, corrections),
+    system: buildCachedSystemPrompt(roster, teamName, awayTeam, corrections, jerseyColors),
     messages: [{ role: 'user', content: [...contentBlocks, textBlock] }],
   }, jobId);
 
@@ -1007,6 +1066,7 @@ async function analyzeVideoEvents(
   // Step 2: Extract clip frames and analyze each event
   const corrections = await loadRecentCorrections();
   const client = getClient();
+  const jerseyColors = await findJerseyColors(videoPath, teamName, awayTeam);
   const clipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-clips-'));
 
   const allPlays: AnalysisResult['plays'] = [];
@@ -1031,7 +1091,7 @@ async function analyzeVideoEvents(
     }
 
     // Analyze the clip
-    const clipResult = await analyzeClip(client, clipFrames, eventTime, context, focus, roster, teamName, awayTeam, jobId, corrections);
+    const clipResult = await analyzeClip(client, clipFrames, eventTime, context, focus, roster, teamName, awayTeam, jobId, corrections, jerseyColors ?? undefined);
 
     if (clipResult.plays) allPlays.push(...clipResult.plays);
     if (clipResult.insights) allInsights.push(...clipResult.insights);
