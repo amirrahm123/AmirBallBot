@@ -224,7 +224,13 @@ Write a note if BOTH are true:
 1. You can see basketball action involving the home team
 2. There is a visible outcome in Frame 8
 
-When in doubt — write the note. A note that is slightly imprecise is better than no note. Target is 8-10 notes per 5 minutes. If you are writing fewer than 5 notes you are being too strict.
+כלל ברזל — איכות על פני כמות:
+- החזר מקסימום 6 מהלכים לכל 5 דקות של וידאו
+- בחר רק את המהלכים הכי משמעותיים טקטית — מהלכים שמאמן היה עוצר את הסרטון בשבילם
+- אל תרשום: סל פשוט, פאסה רגילה, ריבאונד שגרתי
+- כן לרשום: מהלך מורכב, טעות טקטית, מצב לחץ, אלי אופ, חטיפה מובילה למתפרצת, הגנה יוצאת דופן
+- אם קליפ מכיל רק פעולה שגרתית — דלג עליו לחלוטין
+- עדיף 4 מהלכים מדויקים על 18 מהלכים ממוצעים
 
 ═══════════════════════════
 INSIGHTS — 3 TO 4 PER VIDEO
@@ -877,8 +883,8 @@ function mergeAndCapEvents(scoreEvents: DetectedEvent[], motionEvents: DetectedE
   // Sort by time
   kept.sort((a, b) => a - b);
 
-  // Dynamic cap: 20 for videos under 10min, MAX_CLIPS for longer
-  const cap = duration < 600 ? 20 : MAX_CLIPS;
+  // Dynamic cap: 12 for videos under 10min (room for ~6 high-quality plays), MAX_CLIPS for longer
+  const cap = duration < 600 ? 12 : MAX_CLIPS;
   if (kept.length > cap) {
     console.log(`   ⚠️ ${kept.length} events detected, capping to ${cap}`);
     return kept.slice(0, cap);
@@ -1053,9 +1059,9 @@ async function analyzeVideoEvents(
   if (eventTimestamps.length === 0) {
     console.log('   ⚠️ No events detected — falling back to equal interval sampling');
     if (jobId) await updateJobProgress(jobId, 20, 'לא זוהו רגעים — מחלץ פריימים בפיזור שווה...');
-    // Fallback: 20 equal interval timestamps
-    const step = duration / 21;
-    for (let i = 1; i <= 20; i++) {
+    // Fallback: 12 equal interval timestamps (matches the <10min cap)
+    const step = duration / 13;
+    for (let i = 1; i <= 12; i++) {
       eventTimestamps.push(Math.floor(step * i));
     }
   }
