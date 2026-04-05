@@ -185,6 +185,13 @@ ANALYSIS STRUCTURE — EVERY NOTE
 משמעות: [one tactical sentence for the coach]
 VERDICT: ✅/❌/⚠️ [one sentence reason]
 
+שעון התקפי (אופציונלי — רק אם נראה בפריימים):
+- קרא את שעון ה-24 מהסקורבורד הנראה בפריימים
+- אם השעון מתחת ל-5 שניות: הוסף "תחת לחץ שעון" לתיאור המהלך
+- אם השעון בין 5-10 שניות ונלקחת ירייה: הוסף "ירייה תחת לחץ"
+- אם השעון מגיע ל-0 בלי ירייה: תייג את המהלך כ"הפרת שעון התקפי"
+- אם השעון לא נראה בבירור בשום פריים — התעלם לחלוטין, אל תנחש. שתיקה עדיפה על מספר שגוי.
+
 PLAYER CREDIT:
 - If two players involved: write both. Scorer gets credit for points. Passer gets credit for assist.
 - Always note the assist when it exists — it is tactically important.
