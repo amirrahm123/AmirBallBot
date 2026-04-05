@@ -65,7 +65,10 @@ Frames 3-5 = play develops and peaks
 Frames 6-7 = execution and defense reaction
 Frame 8 = final outcome — most important frame
 
-TARGET: 8-10 notes per 5 minutes of video. Quality over quantity.
+חשוב מאוד — חתכי מצלמה:
+- אם הפריימים מראים שני מהלכים שונים (חתך מצלמה באמצע) — תאר רק את המהלך שמופיע ברוב הפריימים
+- אם אין מספיק פריימים כדי להבין מה קרה — החזר מערך ריק של plays, עדיף שקט על פני ניחוש
+- אל תנסה לתאר מהלך שאתה רואה פחות מ-3 פריימים ברצף שלו
 
 ═══════════════════════════════════
 PLAY TYPE DEFINITIONS — USE EXACTLY
