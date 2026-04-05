@@ -101,7 +101,13 @@ Identify the SPECIFIC outcome:
 
 אלי אופ = high lob pass near basket + teammate catches ABOVE THE RIM and finishes in one motion without landing. Requires precise timing.
 
-איזו = one player isolated 1-on-1 with space cleared by 4 teammates. Goal: exploit quality advantage over defender.
+הבדל קריטי בין אלי-אופ לריבאונד התקפי + פוטבק:
+- אלי-אופ: הכדור מגיע ממסירה מכוונת (לרוב מהצד, מקו האמצע, או מעמוק) — השחקן לא גרד ריבאונד, הוא פשוט קפץ וסיים
+- ריבאונד התקפי + פוטבק: הכדור הגיע קודם מניסיון שוט שנכשל, הכדור ניתז מהרינג או הלוח, ורק אז נתפס
+- אם אתה רואה מסירה ישירה לשחקן שקופץ ומסיים — זה אלי-אופ
+- אם אתה רואה כדור שמגיע מלמעלה-למטה בצורה כאוטית — זה ריבאונד
+
+iso = one player isolated 1-on-1 with space cleared by 4 teammates. Goal: exploit quality advantage over defender.
 
 פוסט אפ = player receives ball with back to basket near the paint, uses body to create advantage, works for close shot.
 
