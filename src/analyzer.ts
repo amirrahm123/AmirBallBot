@@ -620,7 +620,11 @@ async function findJerseyColors(
   homeTeam?: string,
   awayTeam?: string,
 ): Promise<JerseyColors | null> {
-  if (!homeTeam || !awayTeam) return null;
+  console.log('🎨 Finding jersey colors for:', homeTeam, 'vs', awayTeam);
+  if (!homeTeam || !awayTeam) {
+    console.log('🎨 Jersey colors: null — skipping');
+    return null;
+  }
   try {
     const tmpFrame = path.join(os.tmpdir(), 'ballbot-jersey-finder.jpg');
     execFileSync(FFMPEG, [
@@ -645,19 +649,26 @@ async function findJerseyColors(
     const text = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
     try { fs.unlinkSync(tmpFrame); } catch {}
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+    if (!match) {
+      console.log('🎨 Jersey colors: null — skipping');
+      return null;
+    }
     const parsed = JSON.parse(match[0]);
     if (parsed.error) {
       console.log(`   ⚠️ Jersey finder: frame unclear, continuing without colors`);
+      console.log('🎨 Jersey colors: null — skipping');
       return null;
     }
     if (parsed.teamA?.primaryColor && parsed.teamB?.primaryColor) {
       console.log(`   🎨 Jersey colors: ${homeTeam}=${parsed.teamA.primaryColor}, ${awayTeam}=${parsed.teamB.primaryColor}`);
+      console.log('🎨 Jersey colors found:', JSON.stringify(parsed));
       return parsed as JerseyColors;
     }
+    console.log('🎨 Jersey colors: null — skipping');
     return null;
   } catch (e) {
     console.log(`   ⚠️ Jersey color finder failed, continuing without colors`);
+    console.log('🎨 Jersey colors: null — skipping');
     return null;
   }
 }
