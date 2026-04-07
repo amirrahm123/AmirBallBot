@@ -4,18 +4,28 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { analyzeVideo, analyzeYouTube, analyzeImage } from '../analyzer';
-import { Game } from '../database';
+import { Game, Player } from '../database';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
 
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
+// POST with multipart form data (file upload + youtube URL)
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
     const youtubeUrl = req.body?.youtube_url;
     const context = req.body?.context || '';
     const focus = req.body?.focus || 'all';
+    const teamName = req.body?.teamName || '';
+
+    // Fetch roster from MongoDB
+    let roster = '';
+    try {
+      const players = await Player.find().sort({ number: 1 });
+      roster = players.map(p => `#${p.number} ${p.name}`).join(', ');
+      console.log(`📋 Roster: ${roster || '(empty)'}`);
+    } catch { console.warn('⚠️ Could not fetch roster'); }
 
     console.log(`📊 Analysis request — focus: ${focus}, youtube: ${!!youtubeUrl}, file: ${!!req.file}`);
 
@@ -26,16 +36,15 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       console.log(`📁 Uploaded file: ${req.file.originalname} (${ext})`);
 
       if (IMAGE_EXTS.includes(ext)) {
-        result = await analyzeImage(req.file.path, context, focus);
+        result = await analyzeImage(req.file.path, context, focus, teamName, roster);
       } else {
-        result = await analyzeVideo(req.file.path, context, focus);
+        result = await analyzeVideo(req.file.path, context, focus, teamName, roster);
       }
 
-      // Cleanup uploaded file
       try { fs.unlinkSync(req.file.path); } catch {}
 
     } else if (youtubeUrl) {
-      result = await analyzeYouTube(youtubeUrl, context, focus);
+      result = await analyzeYouTube(youtubeUrl, context, focus, teamName, roster);
     } else {
       res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
       return;

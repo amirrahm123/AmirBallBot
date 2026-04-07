@@ -540,12 +540,12 @@ ${JSON.stringify(plays, null, 2)}`,
 }
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
-async function runVideoPipeline(videoPath: string, context: string, focus: string): Promise<AnalysisResult> {
+async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string): Promise<AnalysisResult> {
   // Step 1: Gemini detects plays from full video
   const geminiPlays = await analyzeFullVideoWithGemini(videoPath);
 
   // Step 2: Claude enriches with Hebrew coaching analysis
-  const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, '', '', focus);
+  const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
 
   // Step 3: Claude generates coaching insights
   const insights = await generateInsightsFromPlays(enrichedPlays, context);
@@ -563,7 +563,7 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 // ============================================================
 
 /** Analyze YouTube — download → Gemini → Claude */
-export async function analyzeYouTube(url: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
@@ -572,7 +572,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   const videoPath = downloadYouTube(url);
 
   try {
-    const result = await runVideoPipeline(videoPath, context, focus);
+    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster);
     console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
     return result;
   } finally {
@@ -583,16 +583,16 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file */
-export async function analyzeVideo(videoPath: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
 
-  const result = await runVideoPipeline(videoPath, context, focus);
+  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
 
 /** Analyze a single image file */
-export async function analyzeImage(imagePath: string, context: string, focus: string): Promise<AnalysisResult> {
+export async function analyzeImage(imagePath: string, context: string, focus: string, _teamName = '', _roster = ''): Promise<AnalysisResult> {
   console.log('\n🖼️ Analyzing single image...');
   return analyzeFrames([{ path: imagePath, seconds: 0, timestamp: '0:00' }], context, focus);
 }
