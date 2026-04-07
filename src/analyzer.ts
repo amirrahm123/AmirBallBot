@@ -375,8 +375,8 @@ interface GeminiPlay {
 
 /** STEP 1: Send full video to Gemini for play detection */
 async function analyzeFullVideoWithGemini(videoPath: string): Promise<GeminiPlay[]> {
-  const { GoogleGenerativeAI, FileState } = await import('@google/generative-ai');
-  const { GoogleAIFileManager } = await import('@google/generative-ai/server');
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleAIFileManager, FileState } = await import('@google/generative-ai/server');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
