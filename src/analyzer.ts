@@ -364,6 +364,20 @@ export async function analyzeFrames(frames: FrameWithTime[], context: string, fo
 // NEW PIPELINE: Gemini full video → Claude enrichment
 // ============================================================
 
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, delayMs = 5000): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isRetryable = err?.status === 503 || err?.status === 429 || err?.message?.includes('503') || err?.message?.includes('429');
+      if (attempt === maxAttempts || !isRetryable) throw err;
+      console.log(`   ⚠️ Gemini attempt ${attempt} failed (${err?.status || err?.message}), retrying in ${delayMs/1000}s...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error('unreachable');
+}
+
 interface GeminiPlay {
   startTime: string;
   endTime: string;
@@ -418,10 +432,10 @@ Rules:
     }
     console.log('   ✅ File ready');
 
-    result = await model.generateContent([
+    result = await withRetry(() => model.generateContent([
       { fileData: { mimeType: 'video/mp4', fileUri: file.uri } },
       { text: prompt },
-    ]);
+    ]));
 
     // Cleanup uploaded file
     try { await fileManager.deleteFile(file.name); } catch {}
@@ -429,10 +443,10 @@ Rules:
     // Use inline base64 for small files
     console.log('   📦 Using inline base64...');
     const videoData = fs.readFileSync(videoPath).toString('base64');
-    result = await model.generateContent([
+    result = await withRetry(() => model.generateContent([
       { inlineData: { mimeType: 'video/mp4', data: videoData } },
       { text: prompt },
-    ]);
+    ]));
   }
 
   const responseText = result.response.text();
