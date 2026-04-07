@@ -4,6 +4,27 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import https from 'https';
+import { TeamKnowledge } from './database';
+
+async function getKnowledgeContext(): Promise<string> {
+  try {
+    const knowledge = await TeamKnowledge.findOne({ teamId: 'default' });
+    if (!knowledge) return '';
+    const parts: string[] = [];
+    if (knowledge.philosophy) parts.push(`Philosophy: ${knowledge.philosophy}`);
+    if (knowledge.offenseSystem) parts.push(`Offense system: ${knowledge.offenseSystem}`);
+    if (knowledge.defenseSystem) parts.push(`Defense system: ${knowledge.defenseSystem}`);
+    if (knowledge.documents?.length) {
+      const docText = knowledge.documents.map(d => d.content).join('\n').substring(0, 1000);
+      if (docText) parts.push(docText);
+    }
+    if (parts.length === 0) return '';
+    return `\nCoaching context:\n${parts.join('\n')}\n`;
+  } catch (err) {
+    console.warn('⚠️ Could not fetch knowledge base:', err);
+    return '';
+  }
+}
 
 // ffmpeg/ffprobe: use local Windows binaries if available, otherwise system-installed (Linux/Railway)
 const BIN_DIR = path.join(__dirname, '..', 'bin');
@@ -479,6 +500,7 @@ async function enrichPlaysWithClaude(
 ): Promise<AnalysisResult['plays']> {
   console.log(`\n🤖 [2/3] Claude enrichment (${geminiPlays.length} plays)...`);
   const client = getClient();
+  const knowledgeContext = await getKnowledgeContext();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -498,7 +520,7 @@ Rules:
 Roster: ${roster}
 Team: ${teamName}
 Coach focus: ${focus}
-
+${knowledgeContext}
 Plays to convert:
 ${JSON.stringify(geminiPlays, null, 2)}`,
     }],
@@ -530,6 +552,7 @@ async function generateInsightsFromPlays(
 ): Promise<AnalysisResult['insights']> {
   console.log(`\n💡 [3/3] Generating insights from ${plays.length} plays...`);
   const client = getClient();
+  const knowledgeContext = await getKnowledgeContext();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -541,7 +564,7 @@ Return ONLY a valid JSON array, maximum 4 insights, no explanation or markdown:
 [{"type":"good|warn|bad","title":"Hebrew title","body":"Hebrew explanation"}]
 
 Context: ${context || 'אין הקשר נוסף'}
-
+${knowledgeContext}
 Plays:
 ${JSON.stringify(plays, null, 2)}`,
     }],

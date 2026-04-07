@@ -237,6 +237,10 @@ textarea{resize:vertical;min-height:80px}
 
       <div class="card">
         <div class="card-header"><h3>הקשר משחק</h3></div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם הקבוצה</label>
+          <input type="text" id="team-name" placeholder="הקבוצה שלי" style="direction:rtl">
+        </div>
         <textarea id="game-context" placeholder="לדוגמה: הפועל חיפה נגד מכבי רעננה, ליגה לאומית, סיבוב 12. אנחנו צריכים לנצח כדי להישאר בפלייאוף..."></textarea>
       </div>
 
@@ -456,6 +460,11 @@ let selectedPlayerId = null;
 let currentVideoUrl = '';
 let ytPlayer = null;
 
+// === Team name persistence ===
+const teamNameInput = document.getElementById('team-name');
+teamNameInput.value = localStorage.getItem('teamName') || '';
+teamNameInput.addEventListener('input', () => localStorage.setItem('teamName', teamNameInput.value));
+
 // === Navigation ===
 document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -545,21 +554,43 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     if (ytUrl) formData.append('youtube_url', ytUrl);
     formData.append('context', context);
     formData.append('focus', focus);
+    formData.append('teamName', document.getElementById('team-name').value.trim() || 'הקבוצה שלי');
 
-    const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData });
-    const data = await res.json();
-    clearInterval(stepInterval);
+    // Timeout after 8 minutes
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8 * 60 * 1000);
 
-    if (data.error) throw new Error(data.error);
-    currentAnalysis = data;
-    renderAnalysis(data);
-  } catch (err) {
-    clearInterval(stepInterval);
-    document.getElementById('analysis-processing').classList.add('hidden');
-    document.getElementById('analysis-empty').classList.remove('hidden');
-    document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${err.message}</p>`;
-  }
-});
+    // Rotating status messages
+    const statusEl = document.querySelector('#analysis-processing p');
+    const statusMessages = [
+      { at: 0, text: 'מוריד וידאו...' },
+      { at: 30000, text: 'מנתח עם Gemini...' },
+      { at: 60000, text: 'ממיר לעברית עם Claude...' },
+      { at: 90000, text: 'עוד רגע... ניתוח משחק מלא לוקח 3-5 דקות' },
+      { at: 180000, text: 'עדיין עובד... סרטונים ארוכים לוקחים יותר זמן' },
+      { at: 300000, text: 'כמעט סיימנו...' },
+    ];
+    const statusTimers = statusMessages.map(s => setTimeout(() => { statusEl.textContent = s.text; }, s.at));
+
+    try {
+      const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
+      const data = await res.json();
+      clearInterval(stepInterval);
+
+      if (data.error) throw new Error(data.error);
+      currentAnalysis = data;
+      renderAnalysis(data);
+    } catch (err) {
+      clearInterval(stepInterval);
+      document.getElementById('analysis-processing').classList.add('hidden');
+      document.getElementById('analysis-empty').classList.remove('hidden');
+      const msg = err.name === 'AbortError' ? 'הניתוח לקח יותר מדי זמן. נסה עם קליפ קצר יותר.' : err.message;
+      document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
+    } finally {
+      clearTimeout(timeout);
+      statusTimers.forEach(t => clearTimeout(t));
+    }
+  });
 
 // === Render analysis ===
 function parseTimeToSeconds(t) {
