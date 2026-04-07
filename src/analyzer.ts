@@ -247,10 +247,23 @@ export function downloadYouTube(url: string): string {
   return outPath;
 }
 
+function formatTimestamp(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export interface FrameWithTime {
+  path: string;
+  seconds: number;
+  timestamp: string;
+}
+
 /** Extract 1 frame every 5 seconds using local ffmpeg */
-export function extractFrames(videoPath: string): string[] {
+export function extractFrames(videoPath: string): FrameWithTime[] {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ballbot-frames-'));
-  console.log(`\n📸 [2/4] Extracting frames (1 every 5s)...`);
+  const INTERVAL = 5;
+  console.log(`\n📸 [2/4] Extracting frames (1 every ${INTERVAL}s)...`);
 
   console.log(`   ffprobe: getting duration...`);
   const durationStr = execFileSync(FFPROBE, [
@@ -258,18 +271,21 @@ export function extractFrames(videoPath: string): string[] {
     '-of', 'default=noprint_wrappers=1:nokey=1', videoPath
   ], { encoding: 'utf-8', timeout: 30000 }).trim();
   const duration = parseFloat(durationStr);
-  console.log(`   📹 Video duration: ${duration.toFixed(1)}s`);
+  console.log(`   📹 Video duration: ${duration.toFixed(1)}s (${formatTimestamp(duration)})`);
 
   const pattern = path.join(tmpDir, 'frame_%04d.jpg');
-  console.log(`   ffmpeg: extracting frames fps=1/5 ...`);
+  console.log(`   ffmpeg: extracting frames fps=1/${INTERVAL} ...`);
   execFileSync(FFMPEG, [
-    '-i', videoPath, '-vf', 'fps=1/5', '-q:v', '2', pattern, '-y'
+    '-i', videoPath, '-vf', `fps=1/${INTERVAL}`, '-q:v', '2', pattern, '-y'
   ], { stdio: 'inherit', timeout: 600000 });
 
-  const frames = fs.readdirSync(tmpDir)
+  let frames: FrameWithTime[] = fs.readdirSync(tmpDir)
     .filter(f => f.endsWith('.jpg'))
     .sort()
-    .map(f => path.join(tmpDir, f));
+    .map((f, i) => {
+      const seconds = i * INTERVAL;
+      return { path: path.join(tmpDir, f), seconds, timestamp: formatTimestamp(seconds) };
+    });
 
   console.log(`   ✅ Extracted ${frames.length} frames from ${duration.toFixed(0)}s video`);
 
@@ -277,8 +293,8 @@ export function extractFrames(videoPath: string): string[] {
     console.log(`   ⚠️ Too many frames (${frames.length}), keeping every Nth to get ~20`);
     const step = Math.ceil(frames.length / 20);
     const selected = frames.filter((_, i) => i % step === 0).slice(0, 20);
-    frames.filter(f => !selected.includes(f)).forEach(f => { try { fs.unlinkSync(f); } catch {} });
-    console.log(`   ✅ Kept ${selected.length} frames`);
+    frames.filter(f => !selected.includes(f)).forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    console.log(`   ✅ Kept ${selected.length} frames (${selected[0].timestamp} - ${selected[selected.length-1].timestamp})`);
     return selected;
   }
 
@@ -286,36 +302,43 @@ export function extractFrames(videoPath: string): string[] {
 }
 
 /** Send frame files to Claude Vision API */
-export async function analyzeFrames(frames: string[], context: string, focus: string, geminiDescription?: string | null): Promise<AnalysisResult> {
+export async function analyzeFrames(frames: FrameWithTime[], context: string, focus: string, geminiDescription?: string | null): Promise<AnalysisResult> {
   console.log(`\n🤖 [3/4] Sending ${frames.length} frames to Claude Vision...`);
   const client = getClient();
 
-  const imageBlocks: Anthropic.ImageBlockParam[] = frames.map((framePath, i) => {
-    const data = fs.readFileSync(framePath).toString('base64');
+  // Interleave text labels with images so Claude knows each frame's timestamp
+  const contentBlocks: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [];
+  frames.forEach((frame, i) => {
+    const data = fs.readFileSync(frame.path).toString('base64');
     const sizeKB = (Buffer.byteLength(data, 'base64') / 1024).toFixed(0);
-    console.log(`   📷 Frame ${i + 1}/${frames.length}: ${path.basename(framePath)} (${sizeKB}KB)`);
-    return {
+    console.log(`   📷 Frame ${i + 1}/${frames.length}: ${frame.timestamp} (${sizeKB}KB)`);
+    contentBlocks.push({
+      type: 'text' as const,
+      text: `פריים ${i + 1} — זמן בסרטון: ${frame.timestamp}`,
+    });
+    contentBlocks.push({
       type: 'image' as const,
       source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
-    };
+    });
   });
 
   const geminiContext = geminiDescription
     ? `\n\nתיאור וידאו מ-AI נוסף (השתמש כהקשר בלבד):\n${geminiDescription}\n`
     : '';
 
-  const textBlock: Anthropic.TextBlockParam = {
-    type: 'text',
-    text: `${geminiContext}פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nנתח את הפריימים האלה מהמשחק והחזר JSON.`,
-  };
+  const frameList = frames.map((f, i) => `פריים ${i + 1} = ${f.timestamp}`).join(', ');
+  contentBlocks.push({
+    type: 'text' as const,
+    text: `${geminiContext}פוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nמיפוי זמנים: ${frameList}\nהשתמש בזמנים האלה עבור startTime ו-endTime של כל מהלך. אל תמציא זמנים — השתמש רק בזמנים מהרשימה למעלה.\n\nנתח את הפריימים האלה מהמשחק והחזר JSON.`,
+  });
 
-  console.log(`   📡 Calling Claude claude-sonnet-4-20250514 with ${imageBlocks.length} images...`);
+  console.log(`   📡 Calling Claude claude-sonnet-4-20250514 with ${frames.length} images...`);
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
+    messages: [{ role: 'user', content: contentBlocks }],
   });
 
   const text = response.content
@@ -352,12 +375,13 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   const frames = extractFrames(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
-  // Gemini video understanding layer (additive — works without it)
+  // Gemini video understanding layer — analyze clip from video midpoint
   const useGemini = !!process.env.GEMINI_API_KEY;
   let geminiDescription: string | null = null;
   if (useGemini) {
-    console.log('\n🔮 Running Gemini video understanding...');
-    geminiDescription = await analyzeClipWithGemini(videoPath, 0);
+    const midpoint = frames[Math.floor(frames.length / 2)]?.seconds || 0;
+    console.log(`\n🔮 Running Gemini video understanding at ${formatTimestamp(midpoint)}...`);
+    geminiDescription = await analyzeClipWithGemini(videoPath, midpoint);
     if (geminiDescription) {
       console.log('   ✅ Gemini context acquired');
     }
@@ -366,7 +390,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   const result = await analyzeFrames(frames, context, focus, geminiDescription);
 
   console.log('\n🧹 [4/4] Cleaning up temp files...');
-  frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+  frames.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
   try { fs.unlinkSync(videoPath); } catch {}
   console.log('   ✅ Cleanup done');
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
@@ -380,19 +404,20 @@ export async function analyzeVideo(videoPath: string, context: string, focus: st
   const frames = extractFrames(videoPath);
   if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
-  // Gemini video understanding layer (additive — works without it)
+  // Gemini video understanding layer — analyze clip from video midpoint
   const useGemini = !!process.env.GEMINI_API_KEY;
   let geminiDescription: string | null = null;
   if (useGemini) {
-    console.log('\n🔮 Running Gemini video understanding...');
-    geminiDescription = await analyzeClipWithGemini(videoPath, 0);
+    const midpoint = frames[Math.floor(frames.length / 2)]?.seconds || 0;
+    console.log(`\n🔮 Running Gemini video understanding at ${formatTimestamp(midpoint)}...`);
+    geminiDescription = await analyzeClipWithGemini(videoPath, midpoint);
     if (geminiDescription) {
       console.log('   ✅ Gemini context acquired');
     }
   }
 
   const result = await analyzeFrames(frames, context, focus, geminiDescription);
-  frames.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+  frames.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
@@ -400,5 +425,5 @@ export async function analyzeVideo(videoPath: string, context: string, focus: st
 /** Analyze a single image file */
 export async function analyzeImage(imagePath: string, context: string, focus: string): Promise<AnalysisResult> {
   console.log('\n🖼️ Analyzing single image...');
-  return analyzeFrames([imagePath], context, focus);
+  return analyzeFrames([{ path: imagePath, seconds: 0, timestamp: '0:00' }], context, focus);
 }
