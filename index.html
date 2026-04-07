@@ -246,6 +246,7 @@ textarea{resize:vertical;min-height:80px}
           <div style="display:flex;gap:8px">
             <button class="btn btn-secondary btn-sm" id="roster-import-btn">📋 ייבוא טקסט</button>
             <button class="btn btn-secondary btn-sm" id="roster-add-btn">+ הוסף שחקן</button>
+            <button class="btn btn-secondary btn-sm" id="roster-clear-btn" style="color:#e74c3c">🗑️ נקה סגל</button>
           </div>
         </div>
 
@@ -664,10 +665,27 @@ async function loadRoster() {
       <tr>
         <td class="jersey">${p.number}</td>
         <td class="player-name" onclick="loadPlayer('${p._id}')">${p.name}</td>
+        <td><button class="btn btn-sm" onclick="deletePlayer('${p._id}')" style="padding:2px 6px;font-size:12px">🗑️</button></td>
       </tr>
     `).join('');
   } catch (e) { console.error('loadRoster error:', e); }
 }
+
+async function deletePlayer(id) {
+  if (!confirm('למחוק את השחקן?')) return;
+  try {
+    await fetch(API + '/api/players/' + id, { method: 'DELETE' });
+    loadRoster();
+  } catch (e) { console.error('deletePlayer error:', e); }
+}
+
+document.getElementById('roster-clear-btn').addEventListener('click', async () => {
+  if (!confirm('למחוק את כל השחקנים?')) return;
+  try {
+    await fetch(API + '/api/players/all', { method: 'DELETE' });
+    loadRoster();
+  } catch (e) { console.error('clearRoster error:', e); }
+});
 
 // === Player Profile ===
 async function loadPlayer(id) {

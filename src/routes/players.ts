@@ -125,4 +125,32 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/players/all — delete all players
+router.delete('/all', async (_req: Request, res: Response) => {
+  try {
+    const result = await Player.deleteMany({});
+    console.log(`🗑️ Deleted all players (${result.deletedCount})`);
+    res.json({ deleted: result.deletedCount });
+  } catch (err: any) {
+    console.error('❌ שגיאה במחיקת כל השחקנים:', err);
+    res.status(500).json({ error: 'שגיאה במחיקת שחקנים' });
+  }
+});
+
+// DELETE /api/players/:id — delete single player
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const player = await Player.findByIdAndDelete(req.params.id);
+    if (!player) {
+      res.status(404).json({ error: 'שחקן לא נמצא' });
+      return;
+    }
+    console.log(`🗑️ Deleted player: ${player.name}`);
+    res.json({ deleted: true });
+  } catch (err: any) {
+    console.error('❌ שגיאה במחיקת שחקן:', err);
+    res.status(500).json({ error: 'שגיאה במחיקת שחקן' });
+  }
+});
+
 export default router;
