@@ -399,15 +399,21 @@ async function analyzeFullVideoWithGemini(videoPath: string): Promise<GeminiPlay
   console.log(`\n🔮 [1/3] Gemini full video analysis (${fileSizeMB.toFixed(1)}MB)...`);
 
   const prompt = `You are a basketball analyst. Watch this video carefully.
-Identify maximum 8 significant plays.
+Identify the most significant plays based on video length:
+- Under 10 minutes: 5-8 plays
+- 10-60 minutes: up to 20 plays
+- 60+ minutes (full game): exactly 30 plays
+
 Return ONLY a valid JSON array with no explanation or markdown:
-[{"startTime":"0:20","endTime":"0:35","type":"offense","players":["#23","#5"],"description":"exact description of what happened including who passed and who finished","playType":"alley-oop|dunk|3pointer|layup|steal|block|rebound|pick-and-roll|fast-break|turnover"}]
+[{"startTime":"0:20","endTime":"0:35","type":"offense","players":["#23","#5"],"description":"exact description of what happened including who passed and who finished","playType":"alley-oop|dunk|3pointer|layup|steal|block|rebound|pick-and-roll|fast-break|turnover|coast-to-coast|fadeaway"}]
 
 Rules:
-- Maximum 8 plays
-- For alley-oops: MUST include both passer and finisher
-- Skip free throws, timeouts, dead ball
-- Timestamps must match what you actually see in the video`;
+- ALLEY-OOP: lob pass caught mid-air near basket, finished without dribbling. Label as 'alley-oop' NOT 'layup' or 'dunk'. players array MUST include both passer and finisher.
+- ASSISTS: always include both passer and scorer in players array on every offensive play.
+- FAST-BREAK / COAST-TO-COAST: describe the full sequence including every move and how it was finished.
+- PLAYER ACCURACY: use only player numbers you clearly see on jerseys. Do not guess.
+- Skip free throws, timeouts, dead ball.
+- Timestamps must match what you actually see in the video.`;
 
   let result;
 
@@ -481,7 +487,13 @@ async function enrichPlaysWithClaude(
       role: 'user',
       content: `Convert these basketball plays to Hebrew coaching analysis.
 Return ONLY a valid JSON array with no explanation or markdown:
-[{"startTime":"...","endTime":"...","type":"offense|defense|transition","label":"short Hebrew title","note":"1-2 sentence Hebrew coaching insight","players":["#23"]}]
+[{"startTime":"...","endTime":"...","type":"offense|defense|transition","label":"short Hebrew title","note":"2-3 sentence Hebrew coaching insight","players":["#23"]}]
+
+Rules:
+- Always mention who assisted and who scored on every offensive play.
+- Describe the full action sequence, not just the result.
+- For fast-break and coast-to-coast: describe every move in the sequence.
+- Use player names from roster when available, not just numbers.
 
 Roster: ${roster}
 Team: ${teamName}
