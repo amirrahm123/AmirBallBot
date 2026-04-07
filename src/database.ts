@@ -114,6 +114,16 @@ export const Player = mongoose.model<IPlayer>('Player', PlayerSchema);
 export const Game = mongoose.model<IGame>('Game', GameSchema);
 export const TeamKnowledge = mongoose.model<ITeamKnowledge>('TeamKnowledge', TeamKnowledgeSchema);
 
+const AnalysisSchema = new mongoose.Schema({
+  teamName: String,
+  focus: String,
+  plays: Array,
+  insights: Array,
+  playCount: Number,
+  createdAt: { type: Date, default: Date.now },
+});
+export const Analysis = mongoose.model('Analysis', AnalysisSchema);
+
 // === Connect ===
 
 export async function connectDB(): Promise<void> {

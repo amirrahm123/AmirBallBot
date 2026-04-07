@@ -192,6 +192,7 @@ textarea{resize:vertical;min-height:80px}
   <button class="nav-btn" data-screen="player" title="פרופיל שחקן">⭐</button>
   <button class="nav-btn" data-screen="scouting" title="דו״ח סקאוטינג">🔍</button>
   <button class="nav-btn" data-screen="practice" title="תוכנית אימון">📋</button>
+  <button class="nav-btn" data-screen="saved" title="ניתוחים שמורים">💾</button>
   <div class="sidebar-bottom">
     <button class="nav-btn" title="הגדרות">⚙️</button>
   </div>
@@ -414,6 +415,18 @@ textarea{resize:vertical;min-height:80px}
       </div>
     </div>
 
+    <!-- 8. Saved Analyses Screen -->
+    <div class="screen" id="screen-saved">
+      <div class="card">
+        <div class="card-header"><h3>ניתוחים שמורים</h3></div>
+        <div id="saved-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div id="saved-empty" style="text-align:center;padding:40px;color:var(--text3)">
+          <p style="font-size:36px;margin-bottom:12px">💾</p>
+          <p>אין ניתוחים שמורים עדיין</p>
+        </div>
+      </div>
+    </div>
+
     <!-- 7. Practice Plan Screen -->
     <div class="screen" id="screen-practice">
       <div class="card">
@@ -451,7 +464,7 @@ document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
     const screen = btn.dataset.screen;
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-' + screen).classList.add('active');
-    const titles = {upload:'העלאת סרטון',analysis:'ניתוח משחק',chat:'צ\'אט מאמן',roster:'סגל',player:'פרופיל שחקן',scouting:'דו״ח סקאוטינג',practice:'תוכנית אימון'};
+    const titles = {upload:'העלאת סרטון',analysis:'ניתוח משחק',chat:'צ\'אט מאמן',roster:'סגל',player:'פרופיל שחקן',scouting:'דו״ח סקאוטינג',practice:'תוכנית אימון',saved:'ניתוחים שמורים'};
     document.getElementById('screen-title').textContent = titles[screen] || '';
   });
 });
@@ -959,6 +972,60 @@ document.getElementById('roster-confirm-btn').addEventListener('click', async ()
     btn.textContent = 'אשר והוסף לסגל';
   }
 });
+
+// === Saved Analyses ===
+async function loadSavedAnalyses() {
+  try {
+    const res = await fetch(API + '/api/analyses');
+    const analyses = await res.json();
+    const list = document.getElementById('saved-list');
+    const empty = document.getElementById('saved-empty');
+    if (!analyses.length) {
+      list.innerHTML = '';
+      empty.classList.remove('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+    list.innerHTML = analyses.map(a => {
+      const date = new Date(a.createdAt);
+      const formatted = `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}`;
+      return `<div class="play-item" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="cursor:pointer;flex:1" onclick="loadSavedAnalysis('${a._id}')">
+          <div style="font-weight:600;font-size:14px">${a.teamName || 'לא ידוע'}</div>
+          <div style="font-size:12px;color:var(--text3)">${formatted} &middot; ${a.playCount || 0} מהלכים &middot; ${a.focus || 'all'}</div>
+        </div>
+        <button class="btn btn-sm" onclick="deleteSavedAnalysis('${a._id}')" style="padding:2px 6px;font-size:12px">🗑️</button>
+      </div>`;
+    }).join('');
+  } catch (e) { console.error('loadSavedAnalyses error:', e); }
+}
+
+async function loadSavedAnalysis(id) {
+  try {
+    const res = await fetch(API + '/api/analyses/' + id);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    currentAnalysis = data;
+    // Navigate to analysis screen
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-screen="analysis"]').classList.add('active');
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-analysis').classList.add('active');
+    document.getElementById('screen-title').textContent = 'ניתוח משחק';
+    renderAnalysis(data);
+  } catch (e) { console.error('loadSavedAnalysis error:', e); alert('שגיאה בטעינת ניתוח'); }
+}
+
+async function deleteSavedAnalysis(id) {
+  if (!confirm('למחוק את הניתוח?')) return;
+  try {
+    await fetch(API + '/api/analyses/' + id, { method: 'DELETE' });
+    loadSavedAnalyses();
+  } catch (e) { console.error('deleteSavedAnalysis error:', e); }
+}
+
+// Load saved analyses when navigating to the screen
+document.querySelector('[data-screen="saved"]').addEventListener('click', () => loadSavedAnalyses());
 
 // Initial roster load attempt
 loadRoster();

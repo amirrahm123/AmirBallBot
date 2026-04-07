@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { analyzeVideo, analyzeYouTube, analyzeImage } from '../analyzer';
-import { Game, Player } from '../database';
+import { Game, Player, Analysis } from '../database';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -66,6 +66,20 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       (result as any).game_id = saved._id;
     } catch (dbErr) {
       console.warn('⚠️ DB save failed (continuing):', dbErr);
+    }
+
+    // Save analysis record
+    try {
+      await Analysis.create({
+        teamName: teamName || 'לא ידוע',
+        focus,
+        plays: result.plays,
+        insights: result.insights,
+        playCount: result.plays?.length || 0,
+      });
+      console.log('💾 Analysis saved');
+    } catch (dbErr) {
+      console.warn('⚠️ Analysis save failed (continuing):', dbErr);
     }
 
     console.log(`✅ Analysis complete — ${result.plays.length} plays`);
