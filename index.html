@@ -665,18 +665,23 @@ async function loadRoster() {
     const res = await fetch(API + '/api/players');
     const players = await res.json();
     const tbody = document.getElementById('roster-body');
-    tbody.innerHTML = players.map(p => `
+    tbody.innerHTML = players.map(p => {
+      const pts = p.seasonStats?.points ?? '-';
+      const ast = p.seasonStats?.assists ?? '-';
+      const reb = p.seasonStats?.rebounds ?? '-';
+      const gp = p.seasonStats?.gamesPlayed ?? 0;
+      return `
       <tr>
-        <td class="jersey">${p.jersey}</td>
-        <td class="player-name" onclick="loadPlayer(${p.id})">${p.name}</td>
+        <td class="jersey">${p.number}</td>
+        <td class="player-name" onclick="loadPlayer('${p._id}')">${p.name}</td>
         <td>${p.position}</td>
-        <td>${p.ppg || '-'}</td>
-        <td>${p.apg || '-'}</td>
-        <td>${p.rpg || '-'}</td>
-        <td>${p.mpg || '-'}</td>
-      </tr>
-    `).join('');
-  } catch {}
+        <td>${gp ? (pts / gp).toFixed(1) : '-'}</td>
+        <td>${gp ? (ast / gp).toFixed(1) : '-'}</td>
+        <td>${gp ? (reb / gp).toFixed(1) : '-'}</td>
+        <td>${gp ? gp : '-'}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) { console.error('loadRoster error:', e); }
 }
 
 // === Player Profile ===
