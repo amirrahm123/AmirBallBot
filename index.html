@@ -275,11 +275,6 @@ textarea{resize:vertical;min-height:80px}
             <tr>
               <th>#</th>
               <th>שחקן</th>
-              <th>עמדה</th>
-              <th>נק׳/משחק</th>
-              <th>אסיסטים</th>
-              <th>ריבאונדים</th>
-              <th>דק׳/משחק</th>
             </tr>
           </thead>
           <tbody id="roster-body"></tbody>
@@ -665,22 +660,12 @@ async function loadRoster() {
     const res = await fetch(API + '/api/players');
     const players = await res.json();
     const tbody = document.getElementById('roster-body');
-    tbody.innerHTML = players.map(p => {
-      const pts = p.seasonStats?.points ?? '-';
-      const ast = p.seasonStats?.assists ?? '-';
-      const reb = p.seasonStats?.rebounds ?? '-';
-      const gp = p.seasonStats?.gamesPlayed ?? 0;
-      return `
+    tbody.innerHTML = players.map(p => `
       <tr>
         <td class="jersey">${p.number}</td>
         <td class="player-name" onclick="loadPlayer('${p._id}')">${p.name}</td>
-        <td>${p.position}</td>
-        <td>${gp ? (pts / gp).toFixed(1) : '-'}</td>
-        <td>${gp ? (ast / gp).toFixed(1) : '-'}</td>
-        <td>${gp ? (reb / gp).toFixed(1) : '-'}</td>
-        <td>${gp ? gp : '-'}</td>
-      </tr>`;
-    }).join('');
+      </tr>
+    `).join('');
   } catch (e) { console.error('loadRoster error:', e); }
 }
 
