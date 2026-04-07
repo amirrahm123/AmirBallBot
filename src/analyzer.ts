@@ -361,10 +361,208 @@ export async function analyzeFrames(frames: FrameWithTime[], context: string, fo
 }
 
 // ============================================================
-// PUBLIC API: auto-selects local or cloud mode
+// NEW PIPELINE: Gemini full video → Claude enrichment
 // ============================================================
 
-/** Analyze YouTube — full pipeline: yt-dlp → ffmpeg → Claude Vision */
+interface GeminiPlay {
+  startTime: string;
+  endTime: string;
+  type: string;
+  players: string[];
+  description: string;
+  playType: string;
+}
+
+/** STEP 1: Send full video to Gemini for play detection */
+async function analyzeFullVideoWithGemini(videoPath: string): Promise<GeminiPlay[]> {
+  const { GoogleGenerativeAI, FileState } = await import('@google/generative-ai');
+  const { GoogleAIFileManager } = await import('@google/generative-ai/server');
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  const fileSizeMB = fs.statSync(videoPath).size / (1024 * 1024);
+  console.log(`\n🔮 [1/3] Gemini full video analysis (${fileSizeMB.toFixed(1)}MB)...`);
+
+  const prompt = `You are a basketball analyst. Watch this video carefully.
+Identify maximum 8 significant plays.
+Return ONLY a valid JSON array with no explanation or markdown:
+[{"startTime":"0:20","endTime":"0:35","type":"offense","players":["#23","#5"],"description":"exact description of what happened including who passed and who finished","playType":"alley-oop|dunk|3pointer|layup|steal|block|rebound|pick-and-roll|fast-break|turnover"}]
+
+Rules:
+- Maximum 8 plays
+- For alley-oops: MUST include both passer and finisher
+- Skip free throws, timeouts, dead ball
+- Timestamps must match what you actually see in the video`;
+
+  let result;
+
+  if (fileSizeMB > 15) {
+    // Use Gemini Files API for large files
+    console.log('   📤 Uploading to Gemini Files API...');
+    const uploadResult = await fileManager.uploadFile(videoPath, {
+      mimeType: 'video/mp4',
+      displayName: path.basename(videoPath),
+    });
+    console.log(`   ✅ Uploaded: ${uploadResult.file.name} (state: ${uploadResult.file.state})`);
+
+    // Wait for file to become ACTIVE
+    let file = uploadResult.file;
+    while (file.state === FileState.PROCESSING) {
+      console.log('   ⏳ Waiting for file processing...');
+      await new Promise(r => setTimeout(r, 3000));
+      file = await fileManager.getFile(file.name);
+    }
+    if (file.state !== FileState.ACTIVE) {
+      throw new Error(`Gemini file processing failed: ${file.state}`);
+    }
+    console.log('   ✅ File ready');
+
+    result = await model.generateContent([
+      { fileData: { mimeType: 'video/mp4', fileUri: file.uri } },
+      { text: prompt },
+    ]);
+
+    // Cleanup uploaded file
+    try { await fileManager.deleteFile(file.name); } catch {}
+  } else {
+    // Use inline base64 for small files
+    console.log('   📦 Using inline base64...');
+    const videoData = fs.readFileSync(videoPath).toString('base64');
+    result = await model.generateContent([
+      { inlineData: { mimeType: 'video/mp4', data: videoData } },
+      { text: prompt },
+    ]);
+  }
+
+  const responseText = result.response.text();
+  console.log(`   ✅ Gemini responded (${responseText.length} chars)`);
+
+  const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    console.error('   ❌ Raw Gemini response:', responseText.substring(0, 500));
+    throw new Error('Gemini did not return valid JSON');
+  }
+
+  const plays: GeminiPlay[] = JSON.parse(jsonMatch[0]);
+  console.log(`   ✅ Detected ${plays.length} plays`);
+  plays.forEach((p, i) => console.log(`      ${i+1}. ${p.startTime}-${p.endTime} ${p.playType}: ${p.description.substring(0, 60)}`));
+  return plays;
+}
+
+/** STEP 2: Enrich Gemini plays with Hebrew coaching analysis via Claude */
+async function enrichPlaysWithClaude(
+  geminiPlays: GeminiPlay[],
+  roster: string,
+  teamName: string,
+  focus: string
+): Promise<AnalysisResult['plays']> {
+  console.log(`\n🤖 [2/3] Claude enrichment (${geminiPlays.length} plays)...`);
+  const client = getClient();
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Convert these basketball plays to Hebrew coaching analysis.
+Return ONLY a valid JSON array with no explanation or markdown:
+[{"startTime":"...","endTime":"...","type":"offense|defense|transition","label":"short Hebrew title","note":"1-2 sentence Hebrew coaching insight","players":["#23"]}]
+
+Roster: ${roster}
+Team: ${teamName}
+Coach focus: ${focus}
+
+Plays to convert:
+${JSON.stringify(geminiPlays, null, 2)}`,
+    }],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+
+  console.log(`   ✅ Claude responded (${text.length} chars)`);
+  console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
+
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    console.error('   ❌ Raw Claude response:', text.substring(0, 500));
+    throw new Error('Claude enrichment did not return valid JSON');
+  }
+
+  const enriched = JSON.parse(jsonMatch[0]);
+  console.log(`   ✅ Enriched ${enriched.length} plays`);
+  return enriched;
+}
+
+/** STEP 3: Generate coaching insights from enriched plays */
+async function generateInsightsFromPlays(
+  plays: AnalysisResult['plays'],
+  context: string
+): Promise<AnalysisResult['insights']> {
+  console.log(`\n💡 [3/3] Generating insights from ${plays.length} plays...`);
+  const client = getClient();
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Based on these basketball plays from a game, provide coaching insights in Hebrew.
+Return ONLY a valid JSON array, maximum 4 insights, no explanation or markdown:
+[{"type":"good|warn|bad","title":"Hebrew title","body":"Hebrew explanation"}]
+
+Context: ${context || 'אין הקשר נוסף'}
+
+Plays:
+${JSON.stringify(plays, null, 2)}`,
+    }],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+
+  console.log(`   ✅ Claude responded (${text.length} chars)`);
+
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    console.error('   ❌ Raw response:', text.substring(0, 500));
+    return [{ type: 'warn', title: 'שגיאה', body: 'לא הצלחתי לייצר תובנות' }];
+  }
+
+  const insights = JSON.parse(jsonMatch[0]);
+  console.log(`   ✅ Generated ${insights.length} insights`);
+  return insights;
+}
+
+/** Shared pipeline: Gemini video → Claude enrichment → insights */
+async function runVideoPipeline(videoPath: string, context: string, focus: string): Promise<AnalysisResult> {
+  // Step 1: Gemini detects plays from full video
+  const geminiPlays = await analyzeFullVideoWithGemini(videoPath);
+
+  // Step 2: Claude enriches with Hebrew coaching analysis
+  const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, '', '', focus);
+
+  // Step 3: Claude generates coaching insights
+  const insights = await generateInsightsFromPlays(enrichedPlays, context);
+
+  return {
+    game: context || 'ניתוח משחק',
+    plays: enrichedPlays,
+    insights,
+    shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 },
+  };
+}
+
+// ============================================================
+// PUBLIC API
+// ============================================================
+
+/** Analyze YouTube — download → Gemini → Claude */
 export async function analyzeYouTube(url: string, context: string, focus: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
@@ -372,52 +570,23 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   console.log(`   Context: ${context || '(none)'}`);
 
   const videoPath = downloadYouTube(url);
-  const frames = extractFrames(videoPath);
-  if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
-  // Gemini video understanding layer — analyze clip from video midpoint
-  const useGemini = !!process.env.GEMINI_API_KEY;
-  let geminiDescription: string | null = null;
-  if (useGemini) {
-    const midpoint = frames[Math.floor(frames.length / 2)]?.seconds || 0;
-    console.log(`\n🔮 Running Gemini video understanding at ${formatTimestamp(midpoint)}...`);
-    geminiDescription = await analyzeClipWithGemini(videoPath, midpoint);
-    if (geminiDescription) {
-      console.log('   ✅ Gemini context acquired');
-    }
+  try {
+    const result = await runVideoPipeline(videoPath, context, focus);
+    console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
+    return result;
+  } finally {
+    console.log('\n🧹 Cleaning up temp files...');
+    try { fs.unlinkSync(videoPath); } catch {}
+    console.log('   ✅ Cleanup done');
   }
-
-  const result = await analyzeFrames(frames, context, focus, geminiDescription);
-
-  console.log('\n🧹 [4/4] Cleaning up temp files...');
-  frames.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
-  try { fs.unlinkSync(videoPath); } catch {}
-  console.log('   ✅ Cleanup done');
-  console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
-
-  return result;
 }
 
-/** Analyze uploaded video file (local only) */
+/** Analyze uploaded video file */
 export async function analyzeVideo(videoPath: string, context: string, focus: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
-  const frames = extractFrames(videoPath);
-  if (frames.length === 0) throw new Error('לא הצלחתי לחלץ פריימים מהסרטון');
 
-  // Gemini video understanding layer — analyze clip from video midpoint
-  const useGemini = !!process.env.GEMINI_API_KEY;
-  let geminiDescription: string | null = null;
-  if (useGemini) {
-    const midpoint = frames[Math.floor(frames.length / 2)]?.seconds || 0;
-    console.log(`\n🔮 Running Gemini video understanding at ${formatTimestamp(midpoint)}...`);
-    geminiDescription = await analyzeClipWithGemini(videoPath, midpoint);
-    if (geminiDescription) {
-      console.log('   ✅ Gemini context acquired');
-    }
-  }
-
-  const result = await analyzeFrames(frames, context, focus, geminiDescription);
-  frames.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+  const result = await runVideoPipeline(videoPath, context, focus);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
