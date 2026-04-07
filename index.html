@@ -85,7 +85,7 @@ textarea{resize:vertical;min-height:80px}
 .play-item{background:var(--bg3);border-radius:8px;padding:14px 16px;cursor:pointer;transition:.2s;border:1px solid transparent}
 .play-item:hover{border-color:var(--border)}
 .play-item .play-header{display:flex;align-items:center;gap:12px}
-.play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:50px}
+.play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:90px}.play-item .play-time:hover{text-decoration:underline}
 .play-item .play-type{font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .play-item .play-type.offense{background:rgba(0,229,160,.15);color:var(--green)}
 .play-item .play-type.defense{background:rgba(255,77,106,.15);color:var(--red)}
@@ -307,6 +307,13 @@ textarea{resize:vertical;min-height:80px}
       <div id="analysis-results" class="hidden">
         <div class="stats-row" id="stat-cards"></div>
 
+        <!-- Video player -->
+        <div id="video-player-container" class="card hidden" style="margin-bottom:20px">
+          <div class="card-header"><h3>סרטון המשחק</h3></div>
+          <div id="video-player-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px">
+          </div>
+        </div>
+
         <div style="display:grid;grid-template-columns:1fr 340px;gap:20px">
           <!-- Plays list -->
           <div class="card">
@@ -433,6 +440,8 @@ textarea{resize:vertical;min-height:80px}
 const API = 'https://amirballbot-production.up.railway.app';
 let currentAnalysis = null;
 let selectedPlayerId = null;
+let currentVideoUrl = '';
+let ytPlayer = null;
 
 // === Navigation ===
 document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
@@ -480,6 +489,8 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   const ytUrl = document.getElementById('youtube-url').value.trim();
   const context = document.getElementById('game-context').value.trim();
   const focus = document.querySelector('#focus-tags .tag.active')?.dataset.tag || 'all';
+
+  currentVideoUrl = ytUrl;
 
   if (!file && !ytUrl) {
     document.getElementById('upload-status').textContent = '⚠️ בחר סרטון או הכנס קישור YouTube';
@@ -538,9 +549,69 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 });
 
 // === Render analysis ===
+function parseTimeToSeconds(t) {
+  if (!t) return 0;
+  const parts = t.split(':').map(Number);
+  if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+  if (parts.length === 2) return parts[0]*60 + parts[1];
+  return parts[0] || 0;
+}
+
+function extractYouTubeId(url) {
+  const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function extractDriveId(url) {
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function seekVideo(seconds) {
+  if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+    ytPlayer.seekTo(seconds, true);
+    ytPlayer.playVideo();
+  }
+}
+
+function setupVideoPlayer() {
+  const container = document.getElementById('video-player-container');
+  const wrapper = document.getElementById('video-player-wrapper');
+  if (!currentVideoUrl) { container.classList.add('hidden'); return; }
+
+  const ytId = extractYouTubeId(currentVideoUrl);
+  const driveId = extractDriveId(currentVideoUrl);
+
+  if (ytId) {
+    container.classList.remove('hidden');
+    wrapper.innerHTML = `<iframe id="yt-iframe" src="https://www.youtube.com/embed/${ytId}?enablejsapi=1&origin=${location.origin}" style="position:absolute;top:0;left:0;width:100%;height:100%" frameborder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen></iframe>`;
+    // Load YouTube IFrame API
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+      window.onYouTubeIframeAPIReady = () => {
+        ytPlayer = new YT.Player('yt-iframe');
+      };
+    } else {
+      ytPlayer = new YT.Player('yt-iframe');
+    }
+  } else if (driveId) {
+    container.classList.remove('hidden');
+    wrapper.innerHTML = `<iframe src="https://drive.google.com/file/d/${driveId}/preview" style="position:absolute;top:0;left:0;width:100%;height:100%" frameborder="0" allow="autoplay" allowfullscreen></iframe>`;
+    ytPlayer = null;
+  } else {
+    container.classList.add('hidden');
+    ytPlayer = null;
+  }
+}
+
 function renderAnalysis(data) {
   document.getElementById('analysis-processing').classList.add('hidden');
   document.getElementById('analysis-results').classList.remove('hidden');
+
+  // Setup video player
+  setupVideoPlayer();
 
   // Stat cards
   const plays = data.plays || [];
@@ -561,9 +632,11 @@ function renderAnalysis(data) {
   document.getElementById('plays-list').innerHTML = plays.map((p, i) => {
     const typeClass = (p.type||'').toLowerCase().includes('defense') ? 'defense' : (p.type||'').toLowerCase().includes('transition') ? 'transition' : 'offense';
     const typeLabel = p.type === 'Offense' || p.type === 'offense' ? 'התקפה' : p.type === 'Defense' || p.type === 'defense' ? 'הגנה' : 'מעבר';
-    return `<div class="play-item" onclick="this.classList.toggle('expanded')">
+    const timeDisplay = p.startTime && p.endTime ? `${p.startTime} - ${p.endTime}` : (p.time||'');
+    const seekTime = parseTimeToSeconds(p.startTime || p.time);
+    return `<div class="play-item" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
       <div class="play-header">
-        <span class="play-time">${p.time||''}</span>
+        <span class="play-time" onclick="event.stopPropagation();seekVideo(${seekTime})" style="cursor:pointer" title="דלג לזמן זה">${timeDisplay}</span>
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
         <span class="play-players">${(p.players||[]).join(', ')}</span>
