@@ -55,7 +55,7 @@ export interface IInsight {
 const PlayerSchema = new Schema<IPlayer>({
   name: { type: String, required: true },
   number: { type: Number, required: true },
-  position: { type: String, required: true },
+  position: { type: String, required: false, default: '' },
   teamId: { type: String, default: '' },
   seasonStats: {
     points: { type: Number, default: 0 },
