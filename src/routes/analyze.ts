@@ -3,8 +3,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { analyzeVideo, analyzeYouTube, analyzeImage } from '../analyzer';
-import { Game, Player, Analysis } from '../database';
+import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile } from '../analyzer';
+import { Player, Analysis } from '../database';
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -43,29 +44,14 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 
       try { fs.unlinkSync(req.file.path); } catch {}
 
+    } else if (req.body?.geminiFileUri) {
+      console.log('📡 Using pre-uploaded Gemini file');
+      result = await analyzeGeminiFile(req.body.geminiFileUri, context, focus, teamName, roster);
     } else if (youtubeUrl) {
       result = await analyzeYouTube(youtubeUrl, context, focus, teamName, roster);
     } else {
       res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
       return;
-    }
-
-    // Save to MongoDB
-    try {
-      const game = new Game({
-        title: result.game,
-        opponent: context,
-        context,
-        focus,
-        plays: result.plays,
-        insights: result.insights,
-        shotChart: result.shotChart,
-      });
-      const saved = await game.save();
-      console.log(`💾 Game saved to DB: ${saved._id}`);
-      (result as any).game_id = saved._id;
-    } catch (dbErr) {
-      console.warn('⚠️ DB save failed (continuing):', dbErr);
     }
 
     // Save analysis record
@@ -88,6 +74,39 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('❌ שגיאה בניתוח:', err);
     res.status(500).json({ error: err.message || 'שגיאה בניתוח' });
+  }
+});
+
+// GET upload URL for direct browser-to-Gemini upload
+router.get('/upload-url', async (_req: Request, res: Response) => {
+  try {
+    const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
+
+    // Create a resumable upload session
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Protocol': 'resumable',
+          'X-Goog-Upload-Command': 'start',
+          'X-Goog-Upload-Header-Content-Type': 'video/mp4',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ file: { displayName: `upload-${Date.now()}.mp4` } }),
+      }
+    );
+
+    const uploadUrl = response.headers.get('x-goog-upload-url');
+    if (!uploadUrl) {
+      throw new Error('Failed to get upload URL from Gemini');
+    }
+
+    console.log('📤 Created Gemini upload session');
+    res.json({ uploadUrl });
+  } catch (err: any) {
+    console.error('❌ Upload URL error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create upload session' });
   }
 });
 

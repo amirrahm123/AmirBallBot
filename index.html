@@ -190,8 +190,8 @@ textarea{resize:vertical;min-height:80px}
   <button class="nav-btn" data-screen="chat" title="צ'אט עם המאמן">💬</button>
   <button class="nav-btn" data-screen="roster" title="סגל">👥</button>
   <button class="nav-btn" data-screen="player" title="פרופיל שחקן">⭐</button>
-  <button class="nav-btn" data-screen="scouting" title="דו״ח סקאוטינג">🔍</button>
-  <button class="nav-btn" data-screen="practice" title="תוכנית אימון">📋</button>
+  <button class="nav-btn" data-screen="scouting" title="דו״ח סקאוטינג" disabled style="opacity:0.5;position:relative">🔍<span style="position:absolute;top:-4px;right:-4px;background:#f59e0b;color:#000;font-size:9px;padding:1px 4px;border-radius:6px;font-weight:700">בקרוב</span></button>
+  <button class="nav-btn" data-screen="practice" title="תוכנית אימון" disabled style="opacity:0.5;position:relative">📋<span style="position:absolute;top:-4px;right:-4px;background:#f59e0b;color:#000;font-size:9px;padding:1px 4px;border-radius:6px;font-weight:700">בקרוב</span></button>
   <button class="nav-btn" data-screen="saved" title="ניתוחים שמורים">💾</button>
   <div class="sidebar-bottom">
     <button class="nav-btn" title="הגדרות">⚙️</button>
@@ -291,6 +291,12 @@ textarea{resize:vertical;min-height:80px}
         🔬 התחל ניתוח
       </button>
       <div id="upload-status" style="font-size:13px;color:var(--text3)"></div>
+      <div id="upload-progress" class="hidden" style="margin-top:8px;width:100%">
+        <div style="background:var(--bg2);border-radius:8px;overflow:hidden;height:8px">
+          <div id="upload-progress-bar" style="height:100%;background:var(--blue);border-radius:8px;width:0%;transition:width 0.3s"></div>
+        </div>
+        <div id="upload-progress-text" style="font-size:12px;color:var(--text3);margin-top:4px"></div>
+      </div>
     </div>
 
     <!-- 2. Analysis Screen -->
@@ -437,7 +443,7 @@ textarea{resize:vertical;min-height:80px}
         <div class="card-header">
           <h3>תוכנית אימון</h3>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-secondary btn-sm" id="generate-practice">🔄 צור תוכנית</button>
+            <button class="btn btn-secondary btn-sm" id="generate-practice" disabled style="opacity:0.5">🔄 צור תוכנית <span style="background:#f59e0b;color:#000;font-size:9px;padding:1px 4px;border-radius:6px;font-weight:700;margin-right:4px">בקרוב</span></button>
             <button class="btn btn-primary btn-sm" id="save-notion">📝 שמור ל-Notion</button>
           </div>
         </div>
@@ -454,7 +460,7 @@ textarea{resize:vertical;min-height:80px}
 
 <script>
 // Railway backend URL — all API calls go here
-const API = 'https://amirballbot-production.up.railway.app';
+const API = 'https://amirballbot.onrender.com';
 let currentAnalysis = null;
 let selectedPlayerId = null;
 let currentVideoUrl = '';
@@ -505,6 +511,56 @@ fileInput.addEventListener('change', () => {
   }
 });
 
+// === Upload file directly to Gemini ===
+async function uploadToGemini(file) {
+  const progressEl = document.getElementById('upload-progress');
+  const barEl = document.getElementById('upload-progress-bar');
+  const textEl = document.getElementById('upload-progress-text');
+  progressEl.classList.remove('hidden');
+  barEl.style.width = '0%';
+  textEl.textContent = 'מקבל כתובת העלאה...';
+
+  // Step 1: Get upload URL from our server
+  const urlRes = await fetch(API + '/api/analyze/upload-url');
+  const { uploadUrl } = await urlRes.json();
+  if (!uploadUrl) throw new Error('Failed to get upload URL');
+  textEl.textContent = 'מעלה קובץ ישירות ל-Gemini...';
+  barEl.style.width = '10%';
+
+  // Step 2: Upload file directly to Gemini with progress
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl);
+    xhr.setRequestHeader('Content-Type', 'video/mp4');
+    xhr.setRequestHeader('X-Goog-Upload-Protocol', 'resumable');
+    xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
+    xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 80) + 10;
+        barEl.style.width = pct + '%';
+        const mb = (e.loaded / 1024 / 1024).toFixed(1);
+        const totalMb = (e.total / 1024 / 1024).toFixed(1);
+        textEl.textContent = `מעלה... ${mb}MB / ${totalMb}MB`;
+      }
+    };
+
+    xhr.onload = () => {
+      barEl.style.width = '100%';
+      textEl.textContent = 'הועלה בהצלחה!';
+      try {
+        const resp = JSON.parse(xhr.responseText);
+        const fileUri = resp?.file?.uri;
+        if (!fileUri) reject(new Error('No file URI in Gemini response'));
+        else resolve(fileUri);
+      } catch { reject(new Error('Invalid Gemini upload response')); }
+    };
+    xhr.onerror = () => reject(new Error('Upload failed'));
+    xhr.send(file);
+  });
+}
+
 // === Analyze ===
 document.getElementById('analyze-btn').addEventListener('click', async () => {
   const file = fileInput.files[0];
@@ -550,11 +606,27 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
   try {
     const formData = new FormData();
-    if (file) formData.append('file', file);
+    const isVideoFile = file && !file.type.startsWith('image/');
+
+    // For video files: upload directly to Gemini, skip server file transfer
+    if (isVideoFile) {
+      try {
+        const geminiFileUri = await uploadToGemini(file);
+        formData.append('geminiFileUri', geminiFileUri);
+      } catch (uploadErr) {
+        console.warn('Direct upload failed, falling back to server upload:', uploadErr);
+        formData.append('file', file);
+      }
+    } else if (file) {
+      formData.append('file', file);
+    }
+
     if (ytUrl) formData.append('youtube_url', ytUrl);
     formData.append('context', context);
     formData.append('focus', focus);
     formData.append('teamName', document.getElementById('team-name').value.trim() || 'הקבוצה שלי');
+
+    document.getElementById('upload-progress').classList.add('hidden');
 
     // Timeout after 8 minutes
     const controller = new AbortController();
@@ -563,7 +635,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     // Rotating status messages
     const statusEl = document.querySelector('#analysis-processing p');
     const statusMessages = [
-      { at: 0, text: 'מוריד וידאו...' },
+      { at: 0, text: isVideoFile ? 'מנתח עם Gemini...' : 'מוריד וידאו...' },
       { at: 30000, text: 'מנתח עם Gemini...' },
       { at: 60000, text: 'ממיר לעברית עם Claude...' },
       { at: 90000, text: 'עוד רגע... ניתוח משחק מלא לוקח 3-5 דקות' },
@@ -577,7 +649,13 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       const data = await res.json();
       clearInterval(stepInterval);
 
-      if (data.error) throw new Error(data.error);
+      if (data.error) {
+        // Show size warning for Google Drive download failures
+        if (data.error.includes('ENOMEM') || data.error.includes('memory') || data.error.includes('too large')) {
+          throw new Error('הקובץ גדול מדי להורדה ישירה. אנא העלה את הקובץ ישירות מהמחשב שלך.');
+        }
+        throw new Error(data.error);
+      }
       currentAnalysis = data;
       renderAnalysis(data);
     } catch (err) {
@@ -590,7 +668,14 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       clearTimeout(timeout);
       statusTimers.forEach(t => clearTimeout(t));
     }
-  });
+  } catch (outerErr) {
+    console.error('Upload error:', outerErr);
+    clearInterval(stepInterval);
+    document.getElementById('analysis-processing').classList.add('hidden');
+    document.getElementById('analysis-empty').classList.remove('hidden');
+    document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${outerErr.message}</p>`;
+  }
+});
 
 // === Render analysis ===
 function parseTimeToSeconds(t) {
@@ -902,8 +987,15 @@ function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 // === Roster: toggle import area ===
 document.getElementById('roster-import-btn').addEventListener('click', () => {
   const area = document.getElementById('roster-import-area');
+  const isHidden = area.classList.contains('hidden');
   area.classList.toggle('hidden');
   document.getElementById('roster-add-form').classList.add('hidden');
+  if (isHidden) {
+    setTimeout(() => {
+      area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      area.querySelector('textarea').focus();
+    }, 50);
+  }
 });
 
 // === Roster: toggle manual add form ===

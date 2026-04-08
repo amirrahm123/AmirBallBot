@@ -7,11 +7,12 @@ import chatRouter from './routes/chat';
 import playersRouter from './routes/players';
 import knowledgeRouter from './routes/knowledge';
 import analysesRouter from './routes/analyses';
+import verifyRouter from './routes/verify';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // CORS — allow Vercel frontend and local dev
 app.use(cors({
@@ -38,6 +39,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/players', playersRouter);
 app.use('/api/knowledge', knowledgeRouter);
 app.use('/api/analyses', analysesRouter);
+app.use('/api/verify', verifyRouter);
 console.log('✅ Routes registered');
 
 // Start server

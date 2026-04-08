@@ -1,10 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { execSync, execFileSync, spawn } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import https from 'https';
 import { TeamKnowledge } from './database';
+import BASKETBALL_BRAIN from './knowledge/basketballBrain';
 
 async function getKnowledgeContext(): Promise<string> {
   try {
@@ -55,196 +55,24 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
-// ============================================================
-// GEMINI VIDEO UNDERSTANDING LAYER
-// ============================================================
-
-async function extractClipVideo(videoPath: string, eventTime: number): Promise<string | null> {
-  const outputPath = videoPath.replace(/\.[^.]+$/, `_clip_${eventTime}.mp4`);
-  try {
-    console.log('🎬 Extracting video segment for Gemini...');
-    const startTime = Math.max(0, eventTime - 4);
-    return await new Promise((resolve, reject) => {
-      const proc = spawn(FFMPEG, [
-        '-ss', String(startTime),
-        '-i', videoPath,
-        '-t', '14',
-        '-c', 'copy',
-        '-y',
-        outputPath
-      ]);
-      proc.on('close', (code) => code === 0 ? resolve(outputPath) : reject(new Error(`ffmpeg exited ${code}`)));
-      proc.on('error', (err) => reject(err));
-    });
-  } catch (err) {
-    console.error('❌ Gemini clip extraction failed:', err);
-    return null;
-  }
-}
-
-async function analyzeClipWithGemini(videoPath: string, eventTime: number): Promise<string | null> {
-  try {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-    const clipPath = await extractClipVideo(videoPath, eventTime);
-    if (!clipPath) return null;
-
-    const videoData = fs.readFileSync(clipPath);
-    const base64Video = videoData.toString('base64');
-
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'video/mp4',
-          data: base64Video
-        }
-      },
-      {
-        text: `You are analyzing a basketball game clip.
-Describe in 2-3 sentences: what play occurred, which jersey colors were involved, and what was the outcome.
-Be factual and specific. Focus on the key action.`
+async function retryWithBackoff(fn: () => Promise<any>, retries = 4): Promise<any> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const is503 = err?.status === 503 ||
+        err?.message?.includes('503') ||
+        err?.message?.includes('high demand') ||
+        err?.message?.includes('overloaded');
+      if (is503 && i < retries - 1) {
+        const delay = Math.pow(2, i) * 5000;
+        console.log(`Gemini 503 — retry ${i + 1}/${retries} in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
       }
-    ]);
-
-    const description = result.response.text();
-    console.log('🤖 Gemini description:', description.substring(0, 120));
-
-    // cleanup
-    fs.unlinkSync(clipPath);
-
-    return description;
-  } catch (err) {
-    console.error('❌ Gemini analysis failed:', err);
-    return null;
+      throw err;
+    }
   }
-}
-
-// ============================================================
-// VERCEL MODE: YouTube thumbnails → Claude Vision
-// ============================================================
-
-/** Extract YouTube video ID from URL */
-function extractVideoId(url: string): string | null {
-  const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  return match ? match[1] : null;
-}
-
-/** Fetch an image URL and return base64 */
-function fetchImageAsBase64(url: string): Promise<{ data: string; type: string } | null> {
-  return new Promise((resolve) => {
-    const request = (u: string, redirects = 0) => {
-      if (redirects > 5) { resolve(null); return; }
-      const mod = u.startsWith('https') ? https : require('http');
-      mod.get(u, (res: any) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          request(res.headers.location, redirects + 1);
-          return;
-        }
-        if (res.statusCode !== 200) { resolve(null); return; }
-        const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => {
-          const buf = Buffer.concat(chunks);
-          if (buf.length < 1000) { resolve(null); return; } // too small = placeholder
-          resolve({ data: buf.toString('base64'), type: res.headers['content-type'] || 'image/jpeg' });
-        });
-        res.on('error', () => resolve(null));
-      }).on('error', () => resolve(null));
-    };
-    request(url);
-  });
-}
-
-/** Fetch YouTube thumbnails at multiple timestamps via storyboard */
-async function fetchYouTubeThumbnails(videoId: string): Promise<{ data: string; type: string }[]> {
-  console.log(`   📸 Fetching thumbnails for ${videoId}...`);
-  const thumbUrls = [
-    `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-    `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-    `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-    `https://img.youtube.com/vi/${videoId}/0.jpg`,
-    `https://img.youtube.com/vi/${videoId}/1.jpg`,
-    `https://img.youtube.com/vi/${videoId}/2.jpg`,
-    `https://img.youtube.com/vi/${videoId}/3.jpg`,
-  ];
-
-  const results = await Promise.all(thumbUrls.map(u => fetchImageAsBase64(u)));
-  const valid = results.filter((r): r is { data: string; type: string } => r !== null);
-  console.log(`   ✅ Got ${valid.length} thumbnails`);
-  return valid;
-}
-
-/** Fetch YouTube oEmbed metadata */
-async function fetchYouTubeMetadata(url: string): Promise<string> {
-  return new Promise((resolve) => {
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    https.get(oembedUrl, (res) => {
-      let data = '';
-      res.on('data', (c: string) => data += c);
-      res.on('end', () => {
-        try {
-          const meta = JSON.parse(data);
-          resolve(`כותרת הסרטון: ${meta.title || ''}\nערוץ: ${meta.author_name || ''}`);
-        } catch { resolve(''); }
-      });
-      res.on('error', () => resolve(''));
-    }).on('error', () => resolve(''));
-  });
-}
-
-/** Vercel-compatible: analyze YouTube via thumbnails */
-export async function analyzeYouTubeCloud(url: string, context: string, focus: string): Promise<AnalysisResult> {
-  console.log('\n☁️ ========== CLOUD YOUTUBE ANALYSIS ==========');
-  console.log(`   URL: ${url}`);
-
-  const videoId = extractVideoId(url);
-  if (!videoId) throw new Error('לא הצלחתי לחלץ מזהה סרטון מהקישור');
-
-  // Fetch thumbnails + metadata in parallel
-  const [thumbs, metadata] = await Promise.all([
-    fetchYouTubeThumbnails(videoId),
-    fetchYouTubeMetadata(url),
-  ]);
-
-  if (thumbs.length === 0) throw new Error('לא הצלחתי לטעון תמונות מהסרטון');
-
-  console.log(`\n🤖 Sending ${thumbs.length} thumbnails to Claude Vision...`);
-  const client = getClient();
-
-  const imageBlocks: Anthropic.ImageBlockParam[] = thumbs.map((t) => ({
-    type: 'image' as const,
-    source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: t.data },
-  }));
-
-  const textBlock: Anthropic.TextBlockParam = {
-    type: 'text',
-    text: `${metadata}\nפוקוס ניתוח: ${focus}\nהקשר: ${context || 'אין הקשר נוסף'}\n\nנתח את התמונות האלה מהמשחק והחזר JSON.`,
-  };
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: [...imageBlocks, textBlock] }],
-  });
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('');
-
-  console.log(`   ✅ Claude responded (${text.length} chars)`);
-  console.log(`   📊 Usage: ${response.usage.input_tokens} input, ${response.usage.output_tokens} output tokens`);
-
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('לא נמצא JSON בתגובת Claude');
-
-  const result: AnalysisResult = JSON.parse(jsonMatch[0]);
-  console.log(`   ✅ Parsed: ${result.plays?.length || 0} plays, ${result.insights?.length || 0} insights`);
-  console.log('☁️ ========== CLOUD ANALYSIS COMPLETE ==========\n');
-  return result;
 }
 
 // ============================================================
@@ -258,7 +86,7 @@ export function downloadYouTube(url: string): string {
   console.log(`\n📥 [1/4] Downloading YouTube video: ${url}`);
 
   const cleanUrl = url.split('&t=')[0];
-  const cmd = `yt-dlp -f "best[height<=720]" -o "${outPath}" "${cleanUrl}"`;
+  const cmd = `yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]/best" --no-part --buffer-size 16K -o "${outPath}" "${cleanUrl}"`;
   console.log(`   CMD: ${cmd}`);
 
   execSync(cmd, { stdio: 'inherit', timeout: 300000 });
@@ -406,39 +234,114 @@ interface GeminiPlay {
   players: string[];
   description: string;
   playType: string;
+  possession_origin?: string;
+  setup?: string;
+  action?: string;
+  finish?: string;
+  finish_location?: string;
 }
 
 /** STEP 1: Send full video to Gemini for play detection */
-async function analyzeFullVideoWithGemini(videoPath: string): Promise<GeminiPlay[]> {
+async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: string): Promise<GeminiPlay[]> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
   const { GoogleAIFileManager, FileState } = await import('@google/generative-ai/server');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const fileSizeMB = geminiFileUri ? 0 : fs.statSync(videoPath).size / (1024 * 1024);
+  console.log(`\n🔮 [1/3] Gemini full video analysis${geminiFileUri ? ' (pre-uploaded file)' : ` (${fileSizeMB.toFixed(1)}MB)`}...`);
 
-  const fileSizeMB = fs.statSync(videoPath).size / (1024 * 1024);
-  console.log(`\n🔮 [1/3] Gemini full video analysis (${fileSizeMB.toFixed(1)}MB)...`);
+  const prompt = `You are a professional basketball analyst. Watch this video carefully.
 
-  const prompt = `You are a basketball analyst. Watch this video carefully.
-Identify the most significant plays based on video length:
-- Under 10 minutes: 5-8 plays
-- 10-60 minutes: up to 20 plays
-- 60+ minutes (full game): exactly 30 plays
+Your job is to identify the most significant plays and decompose each one into a full sequence — from how possession was gained to how the play finished.
+
+Number of plays to identify:
+- Under 3 minutes: 4-5 plays
+- 3-10 minutes: MAXIMUM 8 plays — if you identify more than 8, keep only the 8 most significant ones and drop the rest
+- 10-30 minutes: 10-15 plays
+- 30-60 minutes: 15-20 plays
+- 60+ minutes: 25-30 plays
+
+SIGNIFICANCE THRESHOLD — only include a play if it meets at least one of these criteria:
+- Score change (basket made)
+- Turnover that led directly to a fast break
+- Defensive stop on a significant possession
+- Block or steal that changed momentum
+- Skip free throws, timeouts, non-scoring plays, regular half court possessions that ended without a score or turnover
 
 Return ONLY a valid JSON array with no explanation or markdown:
-[{"startTime":"0:20","endTime":"0:35","type":"offense","players":["#23","#5"],"description":"exact description of what happened including who passed and who finished","playType":"alley-oop|dunk|3pointer|layup|steal|block|rebound|pick-and-roll|fast-break|turnover|coast-to-coast|fadeaway"}]
 
-Rules:
-- ALLEY-OOP: lob pass caught mid-air near basket, finished without dribbling. Label as 'alley-oop' NOT 'layup' or 'dunk'. players array MUST include both passer and finisher.
-- ASSISTS: always include both passer and scorer in players array on every offensive play.
-- FAST-BREAK / COAST-TO-COAST: describe the full sequence including every move and how it was finished.
-- PLAYER ACCURACY: use only player numbers you clearly see on jerseys. Do not guess.
+[{
+  "startTime": "0:41",
+  "endTime": "0:51",
+  "playType": "alley_oop_set",
+  "possession_origin": "live_ball | steal | defensive_rebound | offensive_rebound | inbound | turnover_forced",
+  "setup": "exact description of what happened BEFORE the finish — screens, passes, cuts, defensive breakdown",
+  "action": "exact description of the decisive moment — the pass, the drive, the shot",
+  "finish": "how it ended — dunk, layup, 3pointer, fadeaway, tip_in, block, steal",
+  "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
+  "players": ["#23", "#5"],
+  "type": "offense | defense | transition",
+  "description": "one sentence combining the full sequence from origin to finish"
+}]
+
+ARCHETYPE OPTIONS for playType — you MUST pick the closest one:
+- pick_and_roll_finish
+- pick_and_roll_kickout_3
+- isolation_drive
+- isolation_fadeaway
+- transition_steal_dunk
+- transition_leak_out
+- alley_oop_set
+- alley_oop_broken_play
+- post_up_finish
+- backdoor_cut
+- skip_pass_corner_3
+- offensive_rebound_putback
+- offensive_rebound_tip_in
+- fast_break_2on1
+- fast_break_3on2
+- half_court_set_play
+- zone_attack_skip
+- press_break_layup
+- coast_to_coast
+- defensive_stop
+- defensive_block
+- defensive_steal
+
+SEQUENCE RULES — critical:
+- For EVERY play, describe setup before you label the playType
+- ALLEY_OOP: must have a lob pass AND a mid-air catch near the basket. Trace back — who threw the lob and why? Include both passer and finisher in players array.
+- TRANSITION_STEAL_DUNK: possession_origin must be "steal". Describe the steal first, then the drive, then the finish.
+- COAST_TO_COAST: player must receive ball in OWN half and carry it the full length personally. If pass received past halfcourt → use fast_break instead.
+- ISOLATION_FADEAWAY: player shoots jumping away from defender. Do NOT label as isolation_drive.
+- OFFENSIVE_REBOUND_TIP_IN: soft one or two hand push into basket. Do NOT label as putback dunk unless player visibly grabs rim.
+- PLAYER ACCURACY: only use jersey numbers you can clearly read in this specific moment. Never guess a number you cannot clearly see.
+- POSSESSION ORIGIN: only label possession_origin if you can clearly see how the team got the ball in the video. If the play starts after a stoppage (foul call, out of bounds, timeout), use "set_play". If you cannot clearly see how possession was gained, use "unknown". NEVER invent a turnover, steal, or pass that you did not clearly see.
+- STEAL ATTRIBUTION: the player listed as making a steal in possession_origin must be the player you can clearly see intercepting or taking the ball. Never assume the nearest defender made the steal.
+- SETUP FIELD: only describe what you can actually see in the video. If the play starts from a set offense with no clear transition origin, write "set offense" in setup. Never invent context from before the clip starts.
+- PHYSICAL DESCRIPTION ONLY: in the setup, action, and finish fields — describe only what physically happens. Do not interpret tactics or judge if a shot was open or guarded. Write what you see: "player crosses over left, drives baseline, finishes with right hand." Tactical interpretation is handled separately.
+- UNKNOWN FINISH: if the camera cuts away before the play finishes, or if you cannot clearly see how the play ended, write "finish": "unknown" and "playType": use the most conservative option. NEVER invent a dunk, coast-to-coast, or dramatic finish you did not clearly see. A layup you are not sure about is "layup_attempt". A dunk you are not sure about is "layup". Only write "dunk" if you clearly see the player's hands on or above the rim.
+- CAMERA CUT = NEW PLAY: if you see a camera cut or jump in time between two actions, these are TWO SEPARATE PLAYS. Never combine plays from different possessions into one note. If a foul leads to a cut and then a new possession starts, the new possession is a separate play entirely.
+- PULL UP JUMPER: if a player stops off the dribble and shoots a jump shot — whether inside or outside the paint — this is isolation_fadeaway or pull_up_mid. Never label it a layup.
+- LAYUP DEFINITION: a layup is ONLY when a player drives with continuous momentum all the way to the basket and finishes directly at the rim — either off the glass or straight up underneath. The key signal is no jump stop, no gather pause, no separation from defender before shooting. A player who stops inside the paint and jumps to shoot is NOT doing a layup — label it pull_up_mid even if they are close to the basket.
+- PAINT JUMPER vs LAYUP: when a player is in the paint near the basket, look at their feet and body. LAYUP = feet moving toward basket, body leaning forward, one-foot or two-foot gather going UP to the rim. PAINT JUMPER = feet planted or jump-stopped, body upright or slightly back, ball released AWAY from the rim with an arc. If there is any separation between the player and the basket before the shot — it is a pull_up_mid, not a layup. Contact from a defender does not change the shot type.
+- TWO HANDS RULE: if a player releases the ball with TWO HANDS, check the release direction. Two hands rising TOWARD the rim with no arc = layup or power finish. Two hands releasing AWAY from the body with upward arc = jump shot, even inside the paint. One hand finish near the rim = almost always a layup or finger roll. One hand release with arc and separation from basket = floater or pull_up_mid.
+- COAST TO COAST: only label a play coast_to_coast if you see the player receive the ball clearly in their own half AND carry it the full length personally with no cuts in the footage. If there is any camera cut during the play, label it fast_break instead.
 - Skip free throws, timeouts, dead ball.
-- Timestamps must match what you actually see in the video.`;
+- Timestamps must match the exact moment in the video.
+- MINIMUM PLAY DURATION: every play must have a minimum of 4 seconds between startTime and endTime. A play that is 2 seconds or less is not a valid play — extend the window to include the full sequence from setup to finish.`;
 
   let result;
+  const model25 = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-  if (fileSizeMB > 15) {
+  if (geminiFileUri) {
+    // File already uploaded by browser — use directly
+    console.log('   ✅ Using pre-uploaded Gemini file');
+    result = await retryWithBackoff(() => model25.generateContent([
+      { fileData: { mimeType: 'video/mp4', fileUri: geminiFileUri } },
+      { text: prompt },
+    ]));
+  } else if (fileSizeMB > 15) {
     // Use Gemini Files API for large files
     console.log('   📤 Uploading to Gemini Files API...');
     const uploadResult = await fileManager.uploadFile(videoPath, {
@@ -459,7 +362,7 @@ Rules:
     }
     console.log('   ✅ File ready');
 
-    result = await withRetry(() => model.generateContent([
+    result = await retryWithBackoff(() => model25.generateContent([
       { fileData: { mimeType: 'video/mp4', fileUri: file.uri } },
       { text: prompt },
     ]));
@@ -470,25 +373,33 @@ Rules:
     // Use inline base64 for small files
     console.log('   📦 Using inline base64...');
     const videoData = fs.readFileSync(videoPath).toString('base64');
-    result = await withRetry(() => model.generateContent([
+    result = await retryWithBackoff(() => model25.generateContent([
       { inlineData: { mimeType: 'video/mp4', data: videoData } },
       { text: prompt },
     ]));
   }
 
-  const responseText = result.response.text();
-  console.log(`   ✅ Gemini responded (${responseText.length} chars)`);
-
-  const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+  const rawText = result.response.text();
+  const cleaned = rawText
+    .replace(/```json/g, '')
+    .replace(/```/g, '')
+    .trim();
+  const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {
-    console.error('   ❌ Raw Gemini response:', responseText.substring(0, 500));
-    throw new Error('Gemini did not return valid JSON');
+    console.log('Gemini raw (first 500):', rawText.substring(0, 500));
+    throw new Error('No JSON array found in Gemini response');
   }
-
-  const plays: GeminiPlay[] = JSON.parse(jsonMatch[0]);
-  console.log(`   ✅ Detected ${plays.length} plays`);
-  plays.forEach((p, i) => console.log(`      ${i+1}. ${p.startTime}-${p.endTime} ${p.playType}: ${p.description.substring(0, 60)}`));
-  return plays;
+  let parsedPlays: GeminiPlay[];
+  try {
+    parsedPlays = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    console.log('JSON parse failed. Raw match (first 1000):', jsonMatch[0].substring(0, 1000));
+    throw new Error('Failed to parse Gemini JSON: ' + (e as Error).message);
+  }
+  console.log('GEMINI RAW OUTPUT:', JSON.stringify(parsedPlays, null, 2));
+  console.log(`   ✅ Detected ${parsedPlays.length} plays`);
+  parsedPlays.forEach((p, i) => console.log(`      ${i+1}. ${p.startTime}-${p.endTime} ${p.playType}: ${p.description.substring(0, 60)}`));
+  return parsedPlays;
 }
 
 /** STEP 2: Enrich Gemini plays with Hebrew coaching analysis via Claude */
@@ -507,20 +418,55 @@ async function enrichPlaysWithClaude(
     max_tokens: 4096,
     messages: [{
       role: 'user',
-      content: `Convert these basketball plays to Hebrew coaching analysis.
+      content: `You are a professional Israeli basketball coaching analyst.
+Convert these basketball plays into Hebrew coaching notes.
 Return ONLY a valid JSON array with no explanation or markdown:
-[{"startTime":"...","endTime":"...","type":"offense|defense|transition","label":"short Hebrew title","note":"2-3 sentence Hebrew coaching insight","players":["#23"]}]
 
-Rules:
-- Always mention who assisted and who scored on every offensive play.
-- Describe the full action sequence, not just the result.
-- For fast-break and coast-to-coast: describe every move in the sequence.
-- Use player names from roster when available, not just numbers.
+[{
+  "startTime": "...",
+  "endTime": "...",
+  "type": "offense | defense | transition",
+  "label": "short Hebrew title (max 5 words)",
+  "note": "2-3 sentence Hebrew coaching insight",
+  "players": ["#23"]
+}]
+
+Each play you receive has this structure:
+- playType: the archetype (e.g. alley_oop_set, transition_steal_dunk)
+- possession_origin: how the team got the ball
+- setup: what happened before the finish
+- action: the decisive moment
+- finish: how it ended
+- finish_location: where on the court
+- players: who was involved
+- description: one-line summary
+
+RULES for writing the Hebrew note:
+- Always start from possession_origin — how did this play begin?
+- Describe the setup — what created the opportunity?
+- Name the players by roster name if available, number if not
+- End with a coaching observation — what made this play work or fail?
+- For transition_steal_dunk: mention the steal first, then the finish
+- For alley_oop_set: mention who threw the lob AND who finished
+- For pick_and_roll_kickout_3: mention the screener, the ball handler, and the shooter
+- For isolation_fadeaway: do NOT call it a drive or layup
+- For offensive_rebound_tip_in: do NOT call it a dunk
+- For coast_to_coast: only use this term if possession_origin was in own half
+- Keep language natural for an Israeli basketball coach — not robotic
+- PLAYER NAMES: use the exact name as it appears in the roster provided. If the roster has the name in Hebrew (e.g. "דני כהן") use Hebrew. If the roster has the name in English (e.g. "Holmgren") use English. Never transliterate English names into Hebrew letters. Never transliterate Hebrew names into English. The roster is the source of truth for every name. If a player number has no roster match, use only the number e.g. "#7".
+- OPPONENT PLAYS — HOME TEAM PERSPECTIVE ONLY: always write from the analyzing team's perspective. NEVER mention opponent player names by name. Refer to opponents only as "היריב", "שחקן היריב", or by jersey number only (e.g. "#23 של היריב"). Never write LeBron, Reaves, Davis, or any opponent player name. Describe what the home team did well or failed to do defensively.
+- SHOT TYPE ACCURACY: if Gemini labels the shot as fadeaway write פייד-אווי. If Gemini labels it floater write פלואטר או טיפה. Never swap these. They are different shots.
+- THREE POINTER: always write שלשה — never שלושה. This is non-negotiable.
 
 Roster: ${roster}
 Team: ${teamName}
 Coach focus: ${focus}
+
+Coaching Knowledge:
+${BASKETBALL_BRAIN}
+
 ${knowledgeContext}
+
 Plays to convert:
 ${JSON.stringify(geminiPlays, null, 2)}`,
     }],
@@ -589,9 +535,9 @@ ${JSON.stringify(plays, null, 2)}`,
 }
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
-async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string): Promise<AnalysisResult> {
+async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string): Promise<AnalysisResult> {
   // Step 1: Gemini detects plays from full video
-  const geminiPlays = await analyzeFullVideoWithGemini(videoPath);
+  const geminiPlays = await analyzeFullVideoWithGemini(videoPath, geminiFileUri);
 
   // Step 2: Claude enriches with Hebrew coaching analysis
   const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
@@ -603,7 +549,26 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
     game: context || 'ניתוח משחק',
     plays: enrichedPlays,
     insights,
-    shotChart: { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 },
+    shotChart: (() => {
+      const chart = { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 };
+      const offensivePlays = enrichedPlays.filter((p: any) => p.type === 'offense');
+      const total = offensivePlays.length || 1;
+      offensivePlays.forEach((p: any) => {
+        const loc = p.finish_location || '';
+        const pt = p.playType || '';
+        if (loc === 'paint') chart.paint++;
+        else if (loc === 'corner_3_left' || loc === 'corner_3_right') chart.corner3++;
+        else if (loc === 'above_break_3') chart.aboveBreak3++;
+        else if (loc === 'midrange_left' || loc === 'midrange_right' || loc === 'free_throw_line') chart.midRange++;
+        if (pt === 'pullUp3' || pt === 'isolation_fadeaway') chart.pullUp++;
+      });
+      chart.paint = Math.round((chart.paint / total) * 100);
+      chart.midRange = Math.round((chart.midRange / total) * 100);
+      chart.corner3 = Math.round((chart.corner3 / total) * 100);
+      chart.aboveBreak3 = Math.round((chart.aboveBreak3 / total) * 100);
+      chart.pullUp = Math.round((chart.pullUp / total) * 100);
+      return chart;
+    })(),
   };
 }
 
@@ -644,4 +609,14 @@ export async function analyzeVideo(videoPath: string, context: string, focus: st
 export async function analyzeImage(imagePath: string, context: string, focus: string, _teamName = '', _roster = ''): Promise<AnalysisResult> {
   console.log('\n🖼️ Analyzing single image...');
   return analyzeFrames([{ path: imagePath, seconds: 0, timestamp: '0:00' }], context, focus);
+}
+
+/** Analyze a video already uploaded to Gemini Files API */
+export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = ''): Promise<AnalysisResult> {
+  console.log('\n🏀 ========== GEMINI FILE ANALYSIS PIPELINE ==========');
+  console.log(`   File URI: ${geminiFileUri}`);
+
+  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri);
+  console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
+  return result;
 }

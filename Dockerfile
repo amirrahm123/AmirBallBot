@@ -23,6 +23,6 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm install typescript && npx tsc && npm remove typescript
 
-EXPOSE 3000
+EXPOSE 10000
 
 CMD ["node", "dist/server.js"]

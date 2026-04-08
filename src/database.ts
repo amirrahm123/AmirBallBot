@@ -37,7 +37,8 @@ export interface IGame extends Document {
 }
 
 export interface IPlay {
-  time: string;
+  startTime: string;
+  endTime: string;
   type: string;
   label: string;
   note: string;
