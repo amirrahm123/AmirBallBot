@@ -77,36 +77,25 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   }
 });
 
-// GET upload URL for direct browser-to-Gemini upload
-router.get('/upload-url', async (_req: Request, res: Response) => {
+// Upload video to Gemini Files API via server
+router.post('/upload-video', upload.single('file'), async (req: Request, res: Response) => {
   try {
-    const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
-
-    // Create a resumable upload session
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'X-Goog-Upload-Protocol': 'resumable',
-          'X-Goog-Upload-Command': 'start',
-          'X-Goog-Upload-Header-Content-Type': 'video/mp4',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ file: { displayName: `upload-${Date.now()}.mp4` } }),
-      }
-    );
-
-    const uploadUrl = response.headers.get('x-goog-upload-url');
-    if (!uploadUrl) {
-      throw new Error('Failed to get upload URL from Gemini');
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file' });
     }
-
-    console.log('📤 Created Gemini upload session');
-    res.json({ uploadUrl });
+    const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
+    const result = await fileManager.uploadFile(req.file.path, {
+      mimeType: req.file.mimetype || 'video/mp4',
+      displayName: req.file.originalname,
+    });
+    // Cleanup temp file
+    try { fs.unlinkSync(req.file.path); } catch {}
+    console.log(`📤 Uploaded to Gemini: ${result.file.name}`);
+    res.json({ fileUri: result.file.uri, fileName: result.file.name });
   } catch (err: any) {
-    console.error('❌ Upload URL error:', err);
-    res.status(500).json({ error: err.message || 'Failed to create upload session' });
+    console.error('❌ Upload error:', err);
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
+    res.status(500).json({ error: err.message });
   }
 });
 

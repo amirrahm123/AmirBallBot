@@ -518,27 +518,18 @@ async function uploadToGemini(file) {
   const textEl = document.getElementById('upload-progress-text');
   progressEl.classList.remove('hidden');
   barEl.style.width = '0%';
-  textEl.textContent = 'מקבל כתובת העלאה...';
+  textEl.textContent = 'מעלה קובץ לשרת...';
 
-  // Step 1: Get upload URL from our server
-  const urlRes = await fetch(API + '/api/analyze/upload-url');
-  const { uploadUrl } = await urlRes.json();
-  if (!uploadUrl) throw new Error('Failed to get upload URL');
-  textEl.textContent = 'מעלה קובץ ישירות ל-Gemini...';
-  barEl.style.width = '10%';
+  const formData = new FormData();
+  formData.append('file', file);
 
-  // Step 2: Upload file directly to Gemini with progress
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', uploadUrl);
-    xhr.setRequestHeader('Content-Type', 'video/mp4');
-    xhr.setRequestHeader('X-Goog-Upload-Protocol', 'resumable');
-    xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
-    xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
+    xhr.open('POST', API + '/api/analyze/upload-video');
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 80) + 10;
+        const pct = Math.round((e.loaded / e.total) * 90);
         barEl.style.width = pct + '%';
         const mb = (e.loaded / 1024 / 1024).toFixed(1);
         const totalMb = (e.total / 1024 / 1024).toFixed(1);
@@ -551,13 +542,13 @@ async function uploadToGemini(file) {
       textEl.textContent = 'הועלה בהצלחה!';
       try {
         const resp = JSON.parse(xhr.responseText);
-        const fileUri = resp?.file?.uri;
-        if (!fileUri) reject(new Error('No file URI in Gemini response'));
-        else resolve(fileUri);
-      } catch { reject(new Error('Invalid Gemini upload response')); }
+        if (resp.error) { reject(new Error(resp.error)); return; }
+        if (!resp.fileUri) { reject(new Error('No file URI in response')); return; }
+        resolve(resp.fileUri);
+      } catch { reject(new Error('Invalid upload response')); }
     };
     xhr.onerror = () => reject(new Error('Upload failed'));
-    xhr.send(file);
+    xhr.send(formData);
   });
 }
 
