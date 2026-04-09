@@ -260,7 +260,14 @@ async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: str
   console.log(`\n🔮 [1/3] Gemini full video analysis${geminiFileUri ? ' (pre-uploaded file)' : ` (${fileSizeMB.toFixed(1)}MB)`}...`);
 
   const prompt = `You are a professional basketball analyst. Watch this video carefully.
-${jerseyColor ? `\nצבע חולצה של הקבוצה: ${jerseyColor}\n` : ''}
+${jerseyColor ? `
+CRITICAL TEAM FILTER:
+- The team you are analyzing wears ${jerseyColor} jerseys.
+- ONLY analyze plays where the ${jerseyColor} jersey team has the ball on OFFENSE.
+- When the OPPONENT has the ball (different colored jerseys), ONLY include the play if it resulted in a SIGNIFICANT defensive stop, block, or steal by the ${jerseyColor} team. In that case, write it from the DEFENSIVE perspective starting with "הגנה של הקבוצה..."
+- NEVER describe opponent scoring plays, opponent fast breaks, or opponent made shots as positive plays.
+- If you cannot clearly identify which team has the ball by jersey color, SKIP that play entirely.
+` : ''}
 Your job is to identify the most significant plays and decompose each one into a full sequence — from how possession was gained to how the play finished.
 
 Number of plays to identify: detect 11-13 most significant plays.
