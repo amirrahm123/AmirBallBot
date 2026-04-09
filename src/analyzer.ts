@@ -311,7 +311,7 @@ Rules:
 - Focus on plays involving the analyzing team.`;
 
   try {
-    const result = await retryWithBackoff(async () => {
+    const rawResponse = await retryWithBackoff(async () => {
       const res = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         config: {
@@ -326,22 +326,25 @@ Rules:
           ],
         }],
       });
-      const text = res.text || '';
+      const text = typeof res.text === 'string' ? res.text : '';
+      console.log('🔍 res.text length:', text.length, 'preview:', text.substring(0, 200));
       if (!text.trim()) {
         const emptyErr = new Error('Gemini returned empty response');
         (emptyErr as any).status = 503;
         throw emptyErr;
       }
-      return res;
+      return text;
     });
 
-    const rawText = (result.text || '')
+    const rawText = rawResponse
       .replace(/```json/g, '')
       .replace(/```/g, '')
       .trim();
+    console.log('🔍 FULL rawText length:', rawText.length);
     const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+    console.log('🔍 jsonMatch found:', !!jsonMatch);
     if (!jsonMatch) {
-      console.log('⚠️ No timestamp array found:', rawText.substring(0, 300));
+      console.log('⚠️ No timestamp array found. Full rawText:', rawText);
       return [];
     }
     const timestamps: string[] = JSON.parse(jsonMatch[0]);
