@@ -267,6 +267,7 @@ CRITICAL TEAM FILTER:
 - When the OPPONENT has the ball (different colored jerseys), ONLY include the play if it resulted in a SIGNIFICANT defensive stop, block, or steal by the ${jerseyColor} team. In that case, write it from the DEFENSIVE perspective starting with "הגנה של הקבוצה..."
 - NEVER describe opponent scoring plays, opponent fast breaks, or opponent made shots as positive plays.
 - If you cannot clearly identify which team has the ball by jersey color, SKIP that play entirely.
+- COAST TO COAST JERSEY CHECK: A coast-to-coast play is when a player gets the ball in their own half and dribbles the full length of the court to finish. Always identify the jersey color of the player before labeling any coast-to-coast. If the player wears a different color than ${jerseyColor}, this is an OPPONENT play — write it as a defensive failure from the team's perspective or skip it.
 ` : ''}
 Your job is to identify the most significant plays and decompose each one into a full sequence — from how possession was gained to how the play finished.
 
@@ -338,7 +339,9 @@ SEQUENCE RULES — critical:
 - PAINT JUMPER vs LAYUP: when a player is in the paint near the basket, look at their feet and body. LAYUP = feet moving toward basket, body leaning forward, one-foot or two-foot gather going UP to the rim. PAINT JUMPER = feet planted or jump-stopped, body upright or slightly back, ball released AWAY from the rim with an arc. If there is any separation between the player and the basket before the shot — it is a pull_up_mid, not a layup. Contact from a defender does not change the shot type.
 - TWO HANDS RULE: if a player releases the ball with TWO HANDS, check the release direction. Two hands rising TOWARD the rim with no arc = layup or power finish. Two hands releasing AWAY from the body with upward arc = jump shot, even inside the paint. One hand finish near the rim = almost always a layup or finger roll. One hand release with arc and separation from basket = floater or pull_up_mid.
 - WHISTLE/FOUL RULE: if a whistle sounds and play stops, the possession ends there. Do NOT continue analyzing movement after a whistle. If a foul is called, label the play as "foul_drawn" with the player who was fouled. Never describe post-whistle movement as part of the play.
+- PLAY OUTCOME RULE: NEVER assume a play succeeded. Only label a finish as "layup", "dunk", or "made_shot" if you clearly see the ball go through the basket. If the ball goes out of bounds, hits the rim and misses, or the camera cuts before the finish — label it as "missed_shot" or "out_of_bounds". When in doubt, label as "unknown_finish".
 - COAST TO COAST: only label a play coast_to_coast if you see the player receive the ball clearly in their own half AND carry it the full length personally with no cuts in the footage. If there is any camera cut during the play, label it fast_break instead.
+- SHOT ORIGIN RULE: Before labeling any post move, verify where the player received the ball. If the player caught the ball above the free throw line or outside the paint — it is NOT a post move. Label it as isolation_fadeaway or pull_up_mid based on where the shot was taken from.
 - Skip free throws, timeouts, dead ball.
 - Timestamps must match the exact moment in the video.
 - MINIMUM PLAY DURATION: every play must have a minimum of 4 seconds between startTime and endTime. A play that is 2 seconds or less is not a valid play — extend the window to include the full sequence from setup to finish.`;
