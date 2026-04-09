@@ -491,6 +491,8 @@ Player stops and jumps near basket = "pull_up_mid".
 When unsure = "unknown_finish".
 NEVER assume a shot was made unless you clearly see the ball pass through the net. If the shot misses, write missed_3 or missed_2. After a missed shot — check: did anyone get the offensive rebound and score? If yes, that is a SEPARATE play entry with playType offensive_rebound_putback.
 
+RULE — SECOND CHANCE: After every missed shot, watch what happens next in the clip. If a player gets the offensive rebound and scores immediately, that is a SEPARATE play entry with playType offensive_rebound_putback. Write it as a second object in the JSON array. Never stop at the miss if the possession continues in the same clip.
+
 RULE 4 — WHISTLE/FOUL:
 Whistle = play ends immediately.
 Write what happened BEFORE whistle only.
