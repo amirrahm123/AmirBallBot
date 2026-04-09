@@ -326,9 +326,7 @@ textarea{resize:vertical;min-height:80px}
       <div id="analysis-results" class="hidden">
         <!-- Verification bar -->
         <div id="verify-bar" class="card hidden" style="display:flex;align-items:center;gap:16px;padding:12px 16px;margin-bottom:16px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" id="verify-btn" onclick="runVerification()">🔍 בדוק דיוק</button>
           <span id="verify-score" style="font-size:14px;font-weight:700;color:var(--text2)"></span>
-          <span id="verify-spinner" class="hidden" style="font-size:13px;color:var(--text3)">⏳ בודק מהלכים...</span>
           <button class="btn btn-primary btn-sm hidden" id="verify-save-btn" onclick="saveVerification()">💾 שמור ציון</button>
         </div>
 
@@ -757,16 +755,25 @@ function renderAnalysis(data) {
   // Setup video player
   setupVideoPlayer();
 
-  // Show verify bar if we have an analysis ID
+  // Show verify bar with manual coach buttons
   const verifyBar = document.getElementById('verify-bar');
-  if (data.analysisId || data._id) {
+  const plays_ = data.plays || [];
+  if ((data.analysisId || data._id) && plays_.length > 0) {
     verifyBar.classList.remove('hidden');
     verifyBar.dataset.analysisId = data.analysisId || data._id;
+    // Initialize verificationResults for manual scoring
+    verificationResults = plays_.map((p, i) => ({ index: i, startTime: p.startTime, endTime: p.endTime, label: p.label, playType: p.playType || 'unknown', correct: true }));
+    coachVerdicts = {};
+    document.getElementById('verify-save-btn').classList.remove('hidden');
+    updateVerifyScore();
+    // Show manual buttons on all cards
+    plays_.forEach((_, i) => {
+      const buttons = document.getElementById('verify-buttons-' + i);
+      if (buttons) buttons.classList.remove('hidden');
+    });
   } else {
     verifyBar.classList.add('hidden');
   }
-  document.getElementById('verify-score').textContent = '';
-  document.getElementById('verify-save-btn').classList.add('hidden');
 
   // Stat cards
   const plays = data.plays || [];
@@ -1188,54 +1195,6 @@ loadRoster();
 // === Verification system ===
 let verificationResults = [];
 let coachVerdicts = {};
-
-async function runVerification() {
-  const bar = document.getElementById('verify-bar');
-  const analysisId = bar.dataset.analysisId;
-  if (!analysisId) return alert('אין מזהה ניתוח');
-
-  const btn = document.getElementById('verify-btn');
-  const spinner = document.getElementById('verify-spinner');
-  btn.disabled = true;
-  spinner.classList.remove('hidden');
-  verificationResults = [];
-  coachVerdicts = {};
-
-  try {
-    const res = await fetch(API + '/api/verify/verify/' + analysisId, { method: 'POST' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    verificationResults = data.plays || [];
-
-    verificationResults.forEach((v, i) => {
-      const icon = document.getElementById('verify-icon-' + i);
-      const actual = document.getElementById('verify-actual-' + i);
-      const buttons = document.getElementById('verify-buttons-' + i);
-
-      if (v.correct && v.confidence === 'high') {
-        icon.textContent = '✅';
-      } else if (v.correct) {
-        icon.textContent = '⚠️';
-      } else {
-        icon.textContent = '❌';
-        if (v.actualPlay) {
-          actual.textContent = v.actualPlay;
-          actual.classList.remove('hidden');
-        }
-      }
-      buttons.classList.remove('hidden');
-    });
-
-    updateVerifyScore();
-    document.getElementById('verify-save-btn').classList.remove('hidden');
-  } catch (err) {
-    alert('שגיאה באימות: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    spinner.classList.add('hidden');
-  }
-}
 
 function coachOverride(index, isCorrect) {
   coachVerdicts[index] = isCorrect;
