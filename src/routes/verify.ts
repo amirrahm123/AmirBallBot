@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { Analysis, Verification } from '../database';
 
 const router = Router();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 router.post('/verify/:analysisId', async (req: Request, res: Response) => {
   try {
@@ -17,7 +17,6 @@ router.post('/verify/:analysisId', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No plays to verify' });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const results = [];
 
     for (let i = 0; i < plays.length; i++) {
@@ -46,8 +45,11 @@ Return ONLY a valid JSON object:
 }`;
 
       try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text()
+        const result = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+        });
+        const text = (result.text || '')
           .replace(/```json/g, '')
           .replace(/```/g, '')
           .trim();

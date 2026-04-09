@@ -251,18 +251,122 @@ interface GeminiPlay {
   perspective?: string;
 }
 
-/** STEP 1: Send full video to Gemini for play detection */
-async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string, teamName?: string, roster?: string, context?: string): Promise<GeminiPlay[]> {
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  const { GoogleAIFileManager, FileState } = await import('@google/generative-ai/server');
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
-  const fileSizeMB = geminiFileUri ? 0 : fs.statSync(videoPath).size / (1024 * 1024);
-  console.log(`\n🔮 [1/3] Gemini full video analysis${geminiFileUri ? ' (pre-uploaded file)' : ` (${fileSizeMB.toFixed(1)}MB)`}...`);
+/** Helper: upload video to Gemini Files API and return fileUri */
+async function uploadVideoToGemini(videoPath: string): Promise<{ fileUri: string; mimeType: string }> {
+  const { GoogleGenAI, FileState } = await import('@google/genai');
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
+  const fileSizeMB = fs.statSync(videoPath).size / (1024 * 1024);
+  console.log(`   📤 Uploading ${fileSizeMB.toFixed(1)}MB to Gemini Files API...`);
+
+  const uploadResult = await ai.files.upload({
+    file: videoPath,
+    config: {
+      mimeType: 'video/mp4',
+      displayName: path.basename(videoPath),
+    },
+  });
+  console.log(`   ✅ Uploaded: ${uploadResult.name} (state: ${uploadResult.state})`);
+
+  // Wait for file to become ACTIVE
+  let file = uploadResult;
+  while (file.state === FileState.PROCESSING) {
+    console.log('   ⏳ Waiting for file processing...');
+    await new Promise(r => setTimeout(r, 3000));
+    file = await ai.files.get({ name: file.name! });
+  }
+  if (file.state !== FileState.ACTIVE) {
+    throw new Error(`Gemini file processing failed: ${file.state}`);
+  }
+  console.log('   ✅ File ready');
+  return { fileUri: file.uri!, mimeType: 'video/mp4' };
+}
+
+/** PASS 1: Detect play timestamps from full video */
+async function detectPlayTimestamps(
+  fileUri: string,
+  mimeType: string,
+  jerseyColor: string,
+  opponentJerseyColor: string
+): Promise<string[]> {
+  const { GoogleGenAI } = await import('@google/genai');
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+  const prompt = `You are watching a basketball game video.
+Your ONLY job is to find timestamps where important plays happened.
+
+Important plays are:
+- Any basket scored (by either team)
+- Any steal or clear turnover
+- Any fast break
+
+Return ONLY a valid JSON array of timestamp strings in MM:SS format.
+Example: ["02:34", "04:11", "07:22", "13:05"]
+
+Rules:
+- Return the array only. No text before or after. No markdown.
+- Maximum 25 timestamps.
+- If two events are within 15 seconds of each other, keep only one.
+- The analyzing team wears ${jerseyColor}. Opponent wears ${opponentJerseyColor}.
+- Focus on plays involving the analyzing team.`;
+
+  try {
+    const result = await retryWithBackoff(async () => {
+      const res = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+        },
+        contents: [{
+          role: 'user',
+          parts: [
+            { fileData: { fileUri, mimeType } },
+            { text: prompt },
+          ],
+        }],
+      });
+      const text = res.text || '';
+      if (!text.trim()) {
+        const emptyErr = new Error('Gemini returned empty response');
+        (emptyErr as any).status = 503;
+        throw emptyErr;
+      }
+      return res;
+    });
+
+    const rawText = (result.text || '')
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim();
+    const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.log('⚠️ No timestamp array found:', rawText.substring(0, 300));
+      return [];
+    }
+    const timestamps: string[] = JSON.parse(jsonMatch[0]);
+    console.log(`🎯 Detected ${timestamps.length} play timestamps:`, timestamps);
+    return timestamps;
+  } catch (err) {
+    console.error('⚠️ Timestamp detection failed:', err);
+    return [];
+  }
+}
+
+/** Build the clip analysis prompt */
+function buildClipPrompt(
+  timestampStr: string,
+  jerseyColor: string,
+  opponentJerseyColor: string,
+  teamName: string,
+  roster: string,
+  context: string
+): string {
   const rosterText = roster || '(no roster provided)';
-
-  const prompt = `You are a professional basketball video analyst.
+  return `You are watching an 18-second clip from a basketball game.
+This clip was extracted around timestamp ${timestampStr} in the full game.
+There is ONE play in this clip. Identify and describe ONLY that play.
+Return a JSON array with exactly ONE play object.
 
 ═══ GAME CONTEXT ═══
 Team being analyzed: ${teamName || 'unknown'}
@@ -275,19 +379,6 @@ ${rosterText}
 Use the roster ONLY to confirm which jersey numbers belong to the analyzing team.
 NEVER use player names in any field.
 Use jersey numbers only: "#11", "#0", etc.
-
-═══ YOUR TASK ═══
-Watch this video and identify 8-13 significant plays. For every missed shot, actively check what happened next — did the ball go out, was there a rebound, did the offense score a second chance? Each of these is a separate entry. Return them as a JSON array.
-
-A significant play is ONE of:
-1. Analyzing team (${jerseyColor || 'unknown'}) scores
-2. Analyzing team turns the ball over AND opponent converts it to a fast break or score
-3. Analyzing team forces a defensive stop (steal, block, charge, shot clock violation)
-4. Opponent scores against analyzing team (write from defensive perspective)
-
-SKIP: free throws, timeouts, dead ball situations, inbounds with no action, jump balls that lead to nothing, turnovers that go nowhere.
-QUALITY OVER QUANTITY: 8 accurate plays is better than 13 invented plays. Never pad to reach 13.
-MINIMUM DURATION: 4 seconds minimum per play.
 
 ═══ DEFINITIONS ═══
 
@@ -369,7 +460,7 @@ POSSESSION ORIGINS:
 "live_ball" = continuous live action.
 "unknown" = cannot clearly see origin.
 
-═══ 9 RULES ═══
+═══ RULES ═══
 
 RULE 1 — JERSEY COLOR FIRST:
 Before writing any play, identify jersey color of the player with the ball.
@@ -400,42 +491,22 @@ finish: "foul_drawn" or "charge_taken".
 RULE 5 — CAMERA CUTS:
 Cut during play = play ends there.
 Never combine two possessions.
-New possession = new play entry.
-A deflection off a missed shot that causes the ball to go out of bounds is NOT a defensive play. Write it as: perspective: offense, finish: out_of_bounds, possession_origin: deflection. Do NOT write it as opponent scoring.
+A deflection off a missed shot that causes the ball to go out of bounds is NOT a defensive play. Write it as: perspective: offense, finish: out_of_bounds, possession_origin: deflection.
 
-RULE 5B — REPLAY/CLOSE-UP CAMERA:
-If the camera zooms in on a player's face, a celebration, a slow-motion replay, or a close-up of the basket AFTER a play already ended — IGNORE. This is not a new play. A new play only starts when the ball is live from a standard broadcast wide-angle view. This includes behind-the-basket camera angles, under-rim cameras, and any angle that is clearly not the main broadcast view — all of these are IGNORE even if a basketball action appears to be happening.
-
-RULE 6 — ALLEY OOP:
-Requires: lob pass + mid-air catch near basket.
-Both passer AND finisher in players array.
-Cannot identify passer = use finisher only, still label alley_oop_set.
-
-RULE 7 — COAST TO COAST:
-Player must personally gain ball in OWN half AND carry full court with no camera cuts.
-Any cut = fast_break.
-Received past halfcourt = fast_break.
-
-RULE 8 — INCOMPLETE PLAYS:
-shot_clock_violation = perspective "defense"
-charge_taken = perspective "defense"
-out_of_bounds by offense = perspective "offense", type "transition" (turnover)
-Jump balls = skip unless immediate score follows.
-
-RULE 9 — SETUP AND ACTION FIELDS:
-setup = 1-2 sentences. For chain plays (pick and roll → defensive collapse → open cutter), describe ALL phases: what the first action was, how the defense reacted, what space was created. Jersey numbers only. No names. Example: "#11 receives ball on left wing, drives middle past #21 of opponent."
-action = ONE sentence only. The decisive moment. Example: "#11 pulls up at free throw line and releases jump shot."
+RULE 6 — SETUP AND ACTION FIELDS:
+setup = 1-2 sentences. For chain plays (pick and roll → defensive collapse → open cutter), describe ALL phases: what the first action was, how the defense reacted, what space was created. Jersey numbers only. No names.
+action = ONE sentence only. The decisive moment.
 description = ONE sentence in English. Full sequence from origin to finish. Jersey numbers only. No names.
 
 ═══ OUTPUT FORMAT ═══
-Return ONLY valid JSON array, no markdown:
+Return ONLY valid JSON array with exactly ONE play, no markdown:
 
 [{
-  "startTime": "0:41",
-  "endTime": "0:51",
+  "startTime": "${timestampStr}",
+  "endTime": "...",
   "playType": "pick_and_roll_finish | pick_and_roll_kickout_3 | pick_and_pop | dribble_handoff | isolation_drive | isolation_fadeaway | post_up_finish | post_up_pass_out | high_low | drive_and_kick | backdoor_cut | skip_pass_corner_3 | elevator_screen | inbound_play | alley_oop_set | transition_steal_dunk | transition_leak_out | fast_break_2on1 | fast_break_3on2 | secondary_break | coast_to_coast | offensive_rebound_putback | offensive_rebound_tip_in | defensive_stop | defensive_block | charge_taken | shot_clock_violation | foul_drawn",
   "possession_origin": "live_ball | steal | deflection | defensive_rebound | offensive_rebound | inbound | after_timeout | after_foul | press_break | unknown",
-  "setup": "one sentence, jersey numbers only",
+  "setup": "1-2 sentences, jersey numbers only",
   "action": "one sentence, jersey numbers only",
   "finish": "dunk | putback_dunk | layup | reverse_layup | euro_step_layup | finger_roll | pull_up_mid | runner | floater | hook_shot | catch_and_shoot | made_3 | missed_3 | made_2 | missed_2 | tip_in | and_one | block | steal | charge_taken | foul_drawn | out_of_bounds | shot_clock_violation | unknown_finish",
   "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
@@ -444,117 +515,79 @@ Return ONLY valid JSON array, no markdown:
   "perspective": "offense | defense | defensive_failure",
   "description": "one sentence in English, jersey numbers only"
 }]`;
+}
 
-  let result;
-  const model25 = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+/** PASS 2: Analyze a single clip around a timestamp */
+async function analyzeClipAtTimestamp(
+  fileUri: string,
+  mimeType: string,
+  timestampStr: string,
+  jerseyColor: string,
+  opponentJerseyColor: string,
+  teamName: string,
+  roster: string,
+  context: string
+): Promise<GeminiPlay | null> {
+  const { GoogleGenAI } = await import('@google/genai');
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-  if (geminiFileUri) {
-    // File already uploaded by browser — use directly
-    console.log('   ✅ Using pre-uploaded Gemini file');
-    result = await retryWithBackoff(async () => {
-      const res = await model25.generateContent([
-        { fileData: { mimeType: 'video/mp4', fileUri: geminiFileUri } },
-        { text: prompt },
-      ]);
-      const text = res.response.text();
-      if (!text || text.trim().length === 0) {
-        const emptyErr = new Error('Gemini returned empty response');
-        (emptyErr as any).status = 503;
-        throw emptyErr;
-      }
-      return res;
-    });
-  } else if (fileSizeMB > 15) {
-    // Use Gemini Files API for large files
-    console.log('   📤 Uploading to Gemini Files API...');
-    const uploadResult = await fileManager.uploadFile(videoPath, {
-      mimeType: 'video/mp4',
-      displayName: path.basename(videoPath),
-    });
-    console.log(`   ✅ Uploaded: ${uploadResult.file.name} (state: ${uploadResult.file.state})`);
+  const [mins, secs] = timestampStr.split(':').map(Number);
+  const centerSeconds = mins * 60 + secs;
+  const startSeconds = Math.max(0, centerSeconds - 8);
+  const endSeconds = centerSeconds + 10;
 
-    // Wait for file to become ACTIVE
-    let file = uploadResult.file;
-    while (file.state === FileState.PROCESSING) {
-      console.log('   ⏳ Waiting for file processing...');
-      await new Promise(r => setTimeout(r, 3000));
-      file = await fileManager.getFile(file.name);
-    }
-    if (file.state !== FileState.ACTIVE) {
-      throw new Error(`Gemini file processing failed: ${file.state}`);
-    }
-    console.log('   ✅ File ready');
+  const clipPrompt = buildClipPrompt(timestampStr, jerseyColor, opponentJerseyColor, teamName, roster, context);
 
-    result = await retryWithBackoff(async () => {
-      const res = await model25.generateContent([
-        { fileData: { mimeType: 'video/mp4', fileUri: file.uri } },
-        { text: prompt },
-      ]);
-      const text = res.response.text();
-      if (!text || text.trim().length === 0) {
-        const emptyErr = new Error('Gemini returned empty response');
-        (emptyErr as any).status = 503;
-        throw emptyErr;
-      }
-      return res;
-    });
-
-    // Cleanup uploaded file
-    try { await fileManager.deleteFile(file.name); } catch {}
-  } else {
-    // Use inline base64 for small files
-    console.log('   📦 Using inline base64...');
-    const videoData = fs.readFileSync(videoPath).toString('base64');
-    result = await retryWithBackoff(async () => {
-      const res = await model25.generateContent([
-        { inlineData: { mimeType: 'video/mp4', data: videoData } },
-        { text: prompt },
-      ]);
-      const text = res.response.text();
-      if (!text || text.trim().length === 0) {
-        const emptyErr = new Error('Gemini returned empty response');
-        (emptyErr as any).status = 503;
-        throw emptyErr;
-      }
-      return res;
-    });
-  }
-
-  const rawText = result.response.text();
-  const cleaned = rawText
-    .replace(/```json/g, '')
-    .replace(/```/g, '')
-    .trim();
-  const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    console.log('Gemini raw (first 500):', rawText.substring(0, 500));
-    throw new Error('No JSON array found in Gemini response');
-  }
-  let parsedPlays: GeminiPlay[];
   try {
-    parsedPlays = JSON.parse(jsonMatch[0]);
-  } catch (e) {
-    console.log('JSON parse failed, attempting repair...');
-    // Attempt to fix truncated JSON by finding the last complete object
-    const raw = jsonMatch[0];
-    const lastComplete = raw.lastIndexOf('},');
-    if (lastComplete > 0) {
-      const repaired = raw.substring(0, lastComplete + 1) + ']';
-      try {
-        parsedPlays = JSON.parse(repaired);
-        console.log(`✅ JSON repaired — recovered ${parsedPlays.length} plays`);
-      } catch (e2) {
-        console.log('JSON repair failed. Raw (first 1000):', jsonMatch[0].substring(0, 1000));
-        throw new Error('Failed to parse Gemini JSON: ' + (e as Error).message);
+    const result = await retryWithBackoff(async () => {
+      const res = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+        },
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              fileData: { fileUri, mimeType },
+              videoMetadata: {
+                startOffset: `${startSeconds}s`,
+                endOffset: `${endSeconds}s`,
+              },
+            },
+            { text: clipPrompt },
+          ],
+        }],
+      });
+      const text = res.text || '';
+      if (!text.trim()) {
+        const emptyErr = new Error('Gemini returned empty response');
+        (emptyErr as any).status = 503;
+        throw emptyErr;
       }
-    } else {
-      throw new Error('Failed to parse Gemini JSON: ' + (e as Error).message);
+      return res;
+    });
+
+    const rawText = (result.text || '')
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim();
+    const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.log(`   ⚠️ Clip ${timestampStr}: no JSON found`);
+      return null;
     }
+    const plays: GeminiPlay[] = JSON.parse(jsonMatch[0]);
+    const play = plays[0] || null;
+    if (play) {
+      console.log(`   🏀 Clip ${timestampStr}: ${play.playType} → ${play.finish}`);
+    }
+    return play;
+  } catch (err) {
+    console.error(`   ❌ Clip ${timestampStr} failed:`, err);
+    return null;
   }
-  console.log('GEMINI RAW OUTPUT:', JSON.stringify(parsedPlays, null, 2));
-  console.log(`   ✅ Detected ${parsedPlays.length} plays`);
-  parsedPlays.forEach((p, i) => console.log(`      ${i+1}. ${p.startTime}-${p.endTime} ${p.playType}: ${p.description.substring(0, 60)}`));
-  return parsedPlays;
 }
 
 /** STEP 2: Enrich Gemini plays with Hebrew coaching analysis via Claude */
@@ -724,13 +757,41 @@ ${JSON.stringify(plays, null, 2)}`,
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
 async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string): Promise<AnalysisResult> {
-  // Step 1: Gemini detects plays from full video
-  const geminiPlays = await analyzeFullVideoWithGemini(videoPath, geminiFileUri, jerseyColor, opponentJerseyColor, teamName, roster, context);
+  // Determine fileUri — upload if needed
+  let fileUri = geminiFileUri || '';
+  const mimeType = 'video/mp4';
 
-  // Step 2: Claude enriches with Hebrew coaching analysis
+  if (!fileUri && videoPath) {
+    const uploaded = await uploadVideoToGemini(videoPath);
+    fileUri = uploaded.fileUri;
+  }
+
+  if (!fileUri) {
+    throw new Error('No video file URI available for analysis');
+  }
+
+  // Pass 1: detect timestamps
+  console.log('🔍 [1/4] Detecting play timestamps...');
+  const timestamps = await detectPlayTimestamps(fileUri, mimeType, jerseyColor || '', opponentJerseyColor || '');
+  console.log(`⏱️ Found ${timestamps.length} timestamps`);
+
+  // Pass 2: analyze each clip
+  console.log('🎬 [2/4] Analyzing individual clips...');
+  const geminiPlays: GeminiPlay[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const ts = timestamps[i];
+    console.log(`   Clip ${i + 1}/${timestamps.length} at ${ts}`);
+    const play = await analyzeClipAtTimestamp(fileUri, mimeType, ts, jerseyColor || '', opponentJerseyColor || '', teamName, roster, context);
+    if (play) geminiPlays.push(play);
+    if (i < timestamps.length - 1) await new Promise(r => setTimeout(r, 3000));
+  }
+  console.log(`✅ Got ${geminiPlays.length} plays from clips`);
+
+  // Step 3: Claude enriches with Hebrew coaching analysis
+  console.log('🤖 [3/4] Claude enrichment...');
   const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
 
-  // Step 3: Claude generates coaching insights
+  // Step 4: Claude generates coaching insights
   const insights = await generateInsightsFromPlays(enrichedPlays, context);
 
   return {

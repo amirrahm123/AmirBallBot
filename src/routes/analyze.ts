@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile } from '../analyzer';
 import { Player, Analysis } from '../database';
-import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
+import { GoogleGenAI, FileState } from '@google/genai';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -89,15 +89,18 @@ router.post('/upload-video', upload.single('file'), async (req: Request, res: Re
     if (!req.file) {
       return res.status(400).json({ error: 'No file' });
     }
-    const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
-    const result = await fileManager.uploadFile(req.file.path, {
-      mimeType: req.file.mimetype || 'video/mp4',
-      displayName: req.file.originalname,
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const result = await ai.files.upload({
+      file: req.file.path,
+      config: {
+        mimeType: req.file.mimetype || 'video/mp4',
+        displayName: req.file.originalname,
+      },
     });
     // Cleanup temp file
     try { fs.unlinkSync(req.file.path); } catch {}
-    console.log(`📤 Uploaded to Gemini: ${result.file.name}`);
-    res.json({ fileUri: result.file.uri, fileName: result.file.name });
+    console.log(`📤 Uploaded to Gemini: ${result.name}`);
+    res.json({ fileUri: result.uri, fileName: result.name });
   } catch (err: any) {
     console.error('❌ Upload error:', err);
     if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
