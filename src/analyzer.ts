@@ -248,10 +248,11 @@ interface GeminiPlay {
   action?: string;
   finish?: string;
   finish_location?: string;
+  perspective?: string;
 }
 
 /** STEP 1: Send full video to Gemini for play detection */
-async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: string, jerseyColor?: string): Promise<GeminiPlay[]> {
+async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string, teamName?: string, roster?: string, context?: string): Promise<GeminiPlay[]> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
   const { GoogleAIFileManager, FileState } = await import('@google/generative-ai/server');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -259,92 +260,185 @@ async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: str
   const fileSizeMB = geminiFileUri ? 0 : fs.statSync(videoPath).size / (1024 * 1024);
   console.log(`\n🔮 [1/3] Gemini full video analysis${geminiFileUri ? ' (pre-uploaded file)' : ` (${fileSizeMB.toFixed(1)}MB)`}...`);
 
-  const prompt = `You are a professional basketball analyst. Watch this video carefully.
-${jerseyColor ? `
-CRITICAL TEAM FILTER:
-- The team you are analyzing wears ${jerseyColor} jerseys.
-- ONLY analyze plays where the ${jerseyColor} jersey team has the ball on OFFENSE.
-- When the OPPONENT has the ball (different colored jerseys), ONLY include the play if it resulted in a SIGNIFICANT defensive stop, block, or steal by the ${jerseyColor} team. In that case, write it from the DEFENSIVE perspective starting with "הגנה של הקבוצה..."
-- NEVER describe opponent scoring plays, opponent fast breaks, or opponent made shots as positive plays.
-- If you cannot clearly identify which team has the ball by jersey color, SKIP that play entirely.
-- COAST TO COAST JERSEY CHECK: A coast-to-coast play is when a player gets the ball in their own half and dribbles the full length of the court to finish. Always identify the jersey color of the player before labeling any coast-to-coast. If the player wears a different color than ${jerseyColor}, this is an OPPONENT play — write it as a defensive failure from the team's perspective or skip it.
-` : ''}
-Your job is to identify the most significant plays and decompose each one into a full sequence — from how possession was gained to how the play finished.
+  const rosterText = roster || '(no roster provided)';
 
-Number of plays to identify: detect 11-13 most significant plays.
+  const prompt = `You are a professional basketball video analyst.
 
-SIGNIFICANCE THRESHOLD — only include a play if it meets at least one of these criteria:
-- Score change (basket made)
-- Turnover that led directly to a fast break
-- Defensive stop on a significant possession
-- Block or steal that changed momentum
-- Skip free throws, timeouts, non-scoring plays, regular half court possessions that ended without a score or turnover
+═══ GAME CONTEXT ═══
+Team being analyzed: ${teamName || 'unknown'}
+Their jersey color: ${jerseyColor || 'unknown'}
+Opponent jersey color: ${opponentJerseyColor || 'unknown'}
+Game situation: ${context || 'none'}
+Analyzing team roster (jersey numbers only):
+${rosterText}
 
-Return ONLY a valid JSON array with no explanation or markdown:
+Use the roster ONLY to confirm which jersey numbers belong to the analyzing team.
+NEVER use player names in any field.
+Use jersey numbers only: "#11", "#0", etc.
+
+═══ YOUR TASK ═══
+Watch this video and identify 8-13 significant plays. Return them as a JSON array.
+
+A significant play is ONE of:
+1. Analyzing team (${jerseyColor || 'unknown'}) scores
+2. Analyzing team turns the ball over AND opponent converts it to a fast break or score
+3. Analyzing team forces a defensive stop (steal, block, charge, shot clock violation)
+4. Opponent scores against analyzing team (write from defensive perspective)
+
+SKIP: free throws, timeouts, dead ball situations, inbounds with no action, jump balls that lead to nothing, turnovers that go nowhere.
+QUALITY OVER QUANTITY: 8 accurate plays is better than 13 invented plays. Never pad to reach 13.
+MINIMUM DURATION: 4 seconds minimum per play.
+
+═══ DEFINITIONS ═══
+
+PLAY TYPES — pick the most accurate:
+Offensive half court:
+- pick_and_roll_finish = screen action, roller or ball handler finishes at basket
+- pick_and_roll_kickout_3 = screen action, kick out to corner or wing 3-pointer
+- pick_and_pop = screener pops to perimeter for jump shot instead of rolling
+- dribble_handoff = ball handler dribbles toward teammate and hands off while moving
+- isolation_drive = one on one, player drives to basket
+- isolation_fadeaway = one on one, player shoots jumping away from defender
+- post_up_finish = player received ball IN the paint or low post, finishes from there
+- post_up_pass_out = player received in post, could not finish, passed back out to shooter
+- high_low = pass from high post (elbow/free throw line) to low post cutter under the basket
+- drive_and_kick = ball handler drives, defense collapses, kicks out to open shooter. The finish belongs to the SHOOTER not the driver
+- backdoor_cut = player cuts behind overplaying defender to receive lob near basket
+- skip_pass_corner_3 = long cross-court pass to corner shooter
+- elevator_screen = two players open and close like elevator doors for shooter running through
+- inbound_play = BLOB or SLOB set play from out of bounds
+- alley_oop_set = lob pass + mid-air catch and finish near basket
+
+Transition:
+- transition_steal_dunk = steal leads directly to fast break finish
+- transition_leak_out = player leaks out early before rebound for easy basket
+- fast_break_2on1 = 2 attackers vs 1 defender
+- fast_break_3on2 = 3 attackers vs 2 defenders
+- secondary_break = not pure fast break, offense pushes pace before defense sets (3-5 seconds after rebound)
+- coast_to_coast = player personally gains ball in OWN half and carries full court alone
+
+Offensive rebounds:
+- offensive_rebound_putback = offensive rebound finished immediately
+- offensive_rebound_tip_in = soft tip into basket
+
+Defensive:
+- defensive_stop = significant half court stop
+- defensive_block = block shot
+- charge_taken = defender takes offensive foul
+- shot_clock_violation = defense forces shot clock to expire
+- foul_drawn = offensive player draws foul
+
+FINISH TYPES — pick the most precise:
+"dunk" = hands at/above rim, ball slammed. Must CLEARLY see this or use "layup".
+"putback_dunk" = offensive rebound finished with dunk.
+"layup" = continuous drive to rim, no jump stop.
+"reverse_layup" = layup on opposite side of basket from approach direction.
+"euro_step_layup" = two-step gather changing direction before finishing at rim.
+"finger_roll" = soft one-finger release at rim.
+"pull_up_mid" = stops off dribble, shoots 2-pointer. Includes spin moves ending in jumper. Even if close to basket — if player stopped and jumped = pull_up_mid not layup.
+"runner" = running one-hand shot released in stride past the paint at higher velocity.
+"floater" = one-handed high arc shot released at edge of paint, deliberate high arc.
+"hook_shot" = sweeping one-arm shot, body fully sideways to basket.
+"catch_and_shoot" = player catches pass and shoots immediately without dribbling.
+"made_3" = 3-point shot goes in.
+"missed_3" = 3-point shot misses.
+"made_2" = catch-and-shoot mid-range that scores, or shot type unclear but 2-pointer scores.
+"missed_2" = catch-and-shoot mid-range misses, or shot type unclear but 2-pointer misses.
+"tip_in" = offensive rebound tapped in softly.
+"and_one" = basket scored while being fouled.
+"block" = shot deflected by defender.
+"steal" = ball taken by defender.
+"charge_taken" = offensive foul called.
+"foul_drawn" = foul called, no basket.
+"out_of_bounds" = ball out before finish. Note in setup: did offense step out (turnover) or defense knock it out (defensive play).
+"shot_clock_violation" = clock expires.
+"unknown_finish" = camera cut or unclear.
+
+WHEN IN DOUBT → "unknown_finish"
+NEVER assume basket scored unless you CLEARLY see ball go through hoop.
+
+POSSESSION ORIGINS:
+"steal" = defender clearly intercepts ball.
+"deflection" = ball bounces off player accidentally into another's hands.
+"defensive_rebound" = defender catches missed shot.
+"offensive_rebound" = attacker catches missed shot.
+"inbound" = play restarts from out of bounds.
+"after_timeout" = first play out of timeout.
+"after_foul" = possession after opponent foul.
+"press_break" = team breaks full court pressure.
+"live_ball" = continuous live action.
+"unknown" = cannot clearly see origin.
+
+═══ 9 RULES ═══
+
+RULE 1 — JERSEY COLOR FIRST:
+Before writing any play, identify jersey color of the player with the ball.
+${jerseyColor || 'unknown'} = analyzing team → write normally, perspective: "offense" or "transition"
+${opponentJerseyColor || 'unknown'} scores → write as defensive failure, perspective: "defensive_failure"
+${opponentJerseyColor || 'unknown'} no score → SKIP
+Truly cannot identify → use roster numbers to determine team. Only skip if impossible.
+
+RULE 2 — PLAY TYPE LOCATION RULE:
+playType determined by WHERE player RECEIVED ball.
+Received in paint/low post = post_up_finish.
+Received above free throw line = isolation type, EVEN IF they spin or drive into paint afterward.
+EXCEPTION: if ball was received AS RESULT of a screen action = use pick_and_roll play type regardless of location.
+drive_and_kick finish = belongs to the SHOOTER.
+
+RULE 3 — FINISH ACCURACY:
+Only "layup" if continuous momentum, no stop.
+Only "dunk" if you CLEARLY see hands above rim.
+Player stops and jumps near basket = "pull_up_mid".
+When unsure = "unknown_finish".
+
+RULE 4 — WHISTLE/FOUL:
+Whistle = play ends immediately.
+Write what happened BEFORE whistle only.
+finish: "foul_drawn" or "charge_taken".
+
+RULE 5 — CAMERA CUTS:
+Cut during play = play ends there.
+Never combine two possessions.
+New possession = new play entry.
+
+RULE 6 — ALLEY OOP:
+Requires: lob pass + mid-air catch near basket.
+Both passer AND finisher in players array.
+Cannot identify passer = use finisher only, still label alley_oop_set.
+
+RULE 7 — COAST TO COAST:
+Player must personally gain ball in OWN half AND carry full court with no camera cuts.
+Any cut = fast_break.
+Received past halfcourt = fast_break.
+
+RULE 8 — INCOMPLETE PLAYS:
+shot_clock_violation = perspective "defense"
+charge_taken = perspective "defense"
+out_of_bounds by offense = perspective "offense", type "transition" (turnover)
+Jump balls = skip unless immediate score follows.
+
+RULE 9 — SETUP AND ACTION FIELDS:
+setup = ONE sentence only. Physical description of what happened before the finish. Jersey numbers only. No names. Example: "#11 receives ball on left wing, drives middle past #21 of opponent."
+action = ONE sentence only. The decisive moment. Example: "#11 pulls up at free throw line and releases jump shot."
+description = ONE sentence in English. Full sequence from origin to finish. Jersey numbers only. No names.
+
+═══ OUTPUT FORMAT ═══
+Return ONLY valid JSON array, no markdown:
 
 [{
   "startTime": "0:41",
   "endTime": "0:51",
-  "playType": "alley_oop_set",
-  "possession_origin": "live_ball | steal | defensive_rebound | offensive_rebound | inbound | turnover_forced",
-  "setup": "exact description of what happened BEFORE the finish — screens, passes, cuts, defensive breakdown",
-  "action": "exact description of the decisive moment — the pass, the drive, the shot",
-  "finish": "how it ended — dunk, layup, 3pointer, fadeaway, tip_in, block, steal",
+  "playType": "pick_and_roll_finish | pick_and_roll_kickout_3 | pick_and_pop | dribble_handoff | isolation_drive | isolation_fadeaway | post_up_finish | post_up_pass_out | high_low | drive_and_kick | backdoor_cut | skip_pass_corner_3 | elevator_screen | inbound_play | alley_oop_set | transition_steal_dunk | transition_leak_out | fast_break_2on1 | fast_break_3on2 | secondary_break | coast_to_coast | offensive_rebound_putback | offensive_rebound_tip_in | defensive_stop | defensive_block | charge_taken | shot_clock_violation | foul_drawn",
+  "possession_origin": "live_ball | steal | deflection | defensive_rebound | offensive_rebound | inbound | after_timeout | after_foul | press_break | unknown",
+  "setup": "one sentence, jersey numbers only",
+  "action": "one sentence, jersey numbers only",
+  "finish": "dunk | putback_dunk | layup | reverse_layup | euro_step_layup | finger_roll | pull_up_mid | runner | floater | hook_shot | catch_and_shoot | made_3 | missed_3 | made_2 | missed_2 | tip_in | and_one | block | steal | charge_taken | foul_drawn | out_of_bounds | shot_clock_violation | unknown_finish",
   "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
-  "players": ["#23", "#5"],
+  "players": ["#11", "#2"],
   "type": "offense | defense | transition",
-  "description": "one sentence combining the full sequence from origin to finish"
-}]
-
-ARCHETYPE OPTIONS for playType — you MUST pick the closest one:
-- pick_and_roll_finish
-- pick_and_roll_kickout_3
-- isolation_drive
-- isolation_fadeaway
-- transition_steal_dunk
-- transition_leak_out
-- alley_oop_set
-- alley_oop_broken_play
-- post_up_finish
-- backdoor_cut
-- skip_pass_corner_3
-- offensive_rebound_putback
-- offensive_rebound_tip_in
-- fast_break_2on1
-- fast_break_3on2
-- half_court_set_play
-- zone_attack_skip
-- press_break_layup
-- coast_to_coast
-- defensive_stop
-- defensive_block
-- defensive_steal
-
-SEQUENCE RULES — critical:
-- For EVERY play, describe setup before you label the playType
-- ALLEY_OOP: must have a lob pass AND a mid-air catch near the basket. Trace back — who threw the lob and why? Include both passer and finisher in players array.
-- TRANSITION_STEAL_DUNK: possession_origin must be "steal". Describe the steal first, then the drive, then the finish.
-- COAST_TO_COAST: player must receive ball in OWN half and carry it the full length personally. If pass received past halfcourt → use fast_break instead.
-- ISOLATION_FADEAWAY: player shoots jumping away from defender. Do NOT label as isolation_drive.
-- OFFENSIVE_REBOUND_TIP_IN: soft one or two hand push into basket. Do NOT label as putback dunk unless player visibly grabs rim.
-- PLAYER ACCURACY: only use jersey numbers you can clearly read in this specific moment. Never guess a number you cannot clearly see.
-- POSSESSION ORIGIN: only label possession_origin if you can clearly see how the team got the ball in the video. If the play starts after a stoppage (foul call, out of bounds, timeout), use "set_play". If you cannot clearly see how possession was gained, use "unknown". NEVER invent a turnover, steal, or pass that you did not clearly see.
-- STEAL ATTRIBUTION: the player listed as making a steal in possession_origin must be the player you can clearly see intercepting or taking the ball. Never assume the nearest defender made the steal.
-- SETUP FIELD: only describe what you can actually see in the video. If the play starts from a set offense with no clear transition origin, write "set offense" in setup. Never invent context from before the clip starts.
-- PHYSICAL DESCRIPTION ONLY: in the setup, action, and finish fields — describe only what physically happens. Do not interpret tactics or judge if a shot was open or guarded. Write what you see: "player crosses over left, drives baseline, finishes with right hand." Tactical interpretation is handled separately.
-- UNKNOWN FINISH: if the camera cuts away before the play finishes, or if you cannot clearly see how the play ended, write "finish": "unknown" and "playType": use the most conservative option. NEVER invent a dunk, coast-to-coast, or dramatic finish you did not clearly see. A layup you are not sure about is "layup_attempt". A dunk you are not sure about is "layup". Only write "dunk" if you clearly see the player's hands on or above the rim.
-- CAMERA CUT = NEW PLAY: if you see a camera cut or jump in time between two actions, these are TWO SEPARATE PLAYS. Never combine plays from different possessions into one note. If a foul leads to a cut and then a new possession starts, the new possession is a separate play entirely.
-- PULL UP JUMPER: if a player stops off the dribble and shoots a jump shot — whether inside or outside the paint — this is isolation_fadeaway or pull_up_mid. Never label it a layup.
-- LAYUP DEFINITION: a layup is ONLY when a player drives with continuous momentum all the way to the basket and finishes directly at the rim — either off the glass or straight up underneath. The key signal is no jump stop, no gather pause, no separation from defender before shooting. A player who stops inside the paint and jumps to shoot is NOT doing a layup — label it pull_up_mid even if they are close to the basket.
-- PAINT JUMPER vs LAYUP: when a player is in the paint near the basket, look at their feet and body. LAYUP = feet moving toward basket, body leaning forward, one-foot or two-foot gather going UP to the rim. PAINT JUMPER = feet planted or jump-stopped, body upright or slightly back, ball released AWAY from the rim with an arc. If there is any separation between the player and the basket before the shot — it is a pull_up_mid, not a layup. Contact from a defender does not change the shot type.
-- TWO HANDS RULE: if a player releases the ball with TWO HANDS, check the release direction. Two hands rising TOWARD the rim with no arc = layup or power finish. Two hands releasing AWAY from the body with upward arc = jump shot, even inside the paint. One hand finish near the rim = almost always a layup or finger roll. One hand release with arc and separation from basket = floater or pull_up_mid.
-- WHISTLE/FOUL RULE: if a whistle sounds and play stops, the possession ends there. Do NOT continue analyzing movement after a whistle. If a foul is called, label the play as "foul_drawn" with the player who was fouled. Never describe post-whistle movement as part of the play.
-- PLAY OUTCOME RULE: NEVER assume a play succeeded. Only label a finish as "layup", "dunk", or "made_shot" if you clearly see the ball go through the basket. If the ball goes out of bounds, hits the rim and misses, or the camera cuts before the finish — label it as "missed_shot" or "out_of_bounds". When in doubt, label as "unknown_finish".
-- COAST TO COAST: only label a play coast_to_coast if you see the player receive the ball clearly in their own half AND carry it the full length personally with no cuts in the footage. If there is any camera cut during the play, label it fast_break instead.
-- SHOT ORIGIN RULE: Before labeling any post move, verify where the player received the ball. If the player caught the ball above the free throw line or outside the paint — it is NOT a post move. Label it as isolation_fadeaway or pull_up_mid based on where the shot was taken from.
-- Skip free throws, timeouts, dead ball.
-- Timestamps must match the exact moment in the video.
-- MINIMUM PLAY DURATION: every play must have a minimum of 4 seconds between startTime and endTime. A play that is 2 seconds or less is not a valid play — extend the window to include the full sequence from setup to finish.`;
+  "perspective": "offense | defense | defensive_failure",
+  "description": "one sentence in English, jersey numbers only"
+}]`;
 
   let result;
   const model25 = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -474,56 +568,89 @@ async function enrichPlaysWithClaude(
     max_tokens: 4096,
     messages: [{
       role: 'user',
-      content: `You are a professional Israeli basketball coaching analyst.
-Convert these basketball plays into Hebrew coaching notes.
-Return ONLY a valid JSON array with no explanation or markdown:
+      content: `You are a professional Israeli basketball coaching analyst writing Hebrew coaching notes.
+
+You will receive plays detected by a video analyst. Each play has:
+- playType: the action that occurred
+- possession_origin: how possession was gained
+- setup: what happened before the finish
+- action: the decisive moment
+- finish: how it ended
+- finish_location: where on court
+- players: jersey numbers involved
+- perspective: offense | defense | defensive_failure
+- description: English physical summary
+
+Your job: convert each play into a Hebrew coaching note using the roster provided.
+
+Return ONLY a valid JSON array, no markdown:
 
 [{
   "startTime": "...",
   "endTime": "...",
   "type": "offense | defense | transition",
-  "label": "short Hebrew title (max 5 words)",
-  "note": "2-3 sentence Hebrew coaching insight",
-  "players": ["#23"]
+  "label": "קצר בעברית — מקסימום 5 מילים",
+  "note": "2-3 משפטים בעברית — הערה אימונית",
+  "players": ["#11"],
+  "perspective": "offense | defense | defensive_failure"
 }]
 
-Each play you receive has this structure:
-- playType: the archetype (e.g. alley_oop_set, transition_steal_dunk)
-- possession_origin: how the team got the ball
-- setup: what happened before the finish
-- action: the decisive moment
-- finish: how it ended
-- finish_location: where on the court
-- players: who was involved
-- description: one-line summary
+═══ WRITING RULES ═══
 
-RULES for writing the Hebrew note:
-- Always start from possession_origin — how did this play begin?
-- Describe the setup — what created the opportunity?
-- Name the players by roster name if available, number if not
-- End with a coaching observation — what made this play work or fail?
-- For transition_steal_dunk: mention the steal first, then the finish
-- For alley_oop_set: mention who threw the lob AND who finished
-- For pick_and_roll_kickout_3: mention the screener, the ball handler, and the shooter
-- For isolation_fadeaway: do NOT call it a drive or layup
-- For offensive_rebound_tip_in: do NOT call it a dunk
-- For coast_to_coast: only use this term if possession_origin was in own half
-- Keep language natural for an Israeli basketball coach — not robotic
-- PLAYER NAMES: use the exact name as it appears in the roster provided. If the roster has the name in Hebrew (e.g. "דני כהן") use Hebrew. If the roster has the name in English (e.g. "Holmgren") use English. Never transliterate English names into Hebrew letters. Never transliterate Hebrew names into English. The roster is the source of truth for every name. If a player number has no roster match, use only the number e.g. "#7".
-- OPPONENT PLAYS — HOME TEAM PERSPECTIVE ONLY: always write from the analyzing team's perspective. NEVER mention opponent player names by name. Refer to opponents only as "היריב", "שחקן היריב", or by jersey number only (e.g. "#23 של היריב"). Never write LeBron, Reaves, Davis, or any opponent player name. Describe what the home team did well or failed to do defensively.
-- SHOT TYPE ACCURACY: if Gemini labels the shot as fadeaway write פייד-אווי. If Gemini labels it floater write פלואטר או טיפה. Never swap these. They are different shots.
-- THREE POINTER: always write שלשה — never שלושה. This is non-negotiable.
+PERSPECTIVE RULE — most important:
+- perspective "offense" = write from attacking perspective. What did we do well or poorly?
+- perspective "defense" = write from defensive perspective. How did we force the stop?
+- perspective "defensive_failure" = opponent scored against us. Write as coaching critique: what did our defense fail to do? Start with: "הגנה אפשרה ל..." NEVER praise the opponent. Focus on our failure.
 
-Roster: ${roster}
-Team: ${teamName}
-Coach focus: ${focus}
+PLAYER NAMES:
+- Use roster name for analyzing team players
+- Hebrew names in Hebrew, English names in English
+- NEVER transliterate English names to Hebrew
+- Opponent players = "היריב" or "#X של היריב"
+- Never mention opponent player names
 
-Coaching Knowledge:
+LANGUAGE RULES:
+- שלשה (never שלושה)
+- פאול (not עבירה אישית)
+- דאנק (not תקיעה)
+- לייאפ (not כניסה)
+- סטיל (not חטיפה)
+- דרייב (not חדירה)
+- פיק אנד רול (acceptable alongside מסך ומסירה)
+
+SHOT TYPE ACCURACY:
+- finish "fadeaway" or "isolation_fadeaway" = write פייד-אווי
+- finish "floater" = write פלואטר or טיפה
+- finish "hook_shot" = write הוק שוט
+- finish "pull_up_mid" = write זריקת עצירה or פול-אפ — never call it לייאפ
+- finish "runner" = write ראנר
+- finish "euro_step_layup" = write יורו סטפ
+- finish "reverse_layup" = write לייאפ הפוך
+- finish "finger_roll" = write פינגר רול
+- finish "dunk" or "putback_dunk" = write דאנק
+- finish "catch_and_shoot" = write קאץ' אנד שוט
+- finish "unknown_finish" = do not mention the finish type — describe the action instead
+
+NOTE STRUCTURE — follow this order:
+1. How did possession start? (from possession_origin)
+2. What was the setup? (from setup field)
+3. What was the decisive action? (from action field)
+4. Coaching observation:
+   - offense: what made this work or fail?
+   - defense: what did we do right?
+   - defensive_failure: what must we fix?
+
+COACHING KNOWLEDGE:
 ${BASKETBALL_BRAIN}
 
 ${knowledgeContext}
 
-Plays to convert:
+═══ INPUTS ═══
+Roster: ${roster}
+Team: ${teamName}
+Focus: ${focus}
+
+Plays:
 ${JSON.stringify(geminiPlays, null, 2)}`,
     }],
   });
@@ -591,9 +718,9 @@ ${JSON.stringify(plays, null, 2)}`,
 }
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
-async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string): Promise<AnalysisResult> {
+async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string): Promise<AnalysisResult> {
   // Step 1: Gemini detects plays from full video
-  const geminiPlays = await analyzeFullVideoWithGemini(videoPath, geminiFileUri, jerseyColor);
+  const geminiPlays = await analyzeFullVideoWithGemini(videoPath, geminiFileUri, jerseyColor, opponentJerseyColor, teamName, roster, context);
 
   // Step 2: Claude enriches with Hebrew coaching analysis
   const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
@@ -633,7 +760,7 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 // ============================================================
 
 /** Analyze YouTube — download → Gemini → Claude */
-export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = ''): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
@@ -642,7 +769,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   const videoPath = downloadYouTube(url);
 
   try {
-    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor);
+    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor);
     console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
     return result;
   } finally {
@@ -653,10 +780,10 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file */
-export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = ''): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
 
-  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor);
+  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
@@ -668,11 +795,11 @@ export async function analyzeImage(imagePath: string, context: string, focus: st
 }
 
 /** Analyze a video already uploaded to Gemini Files API */
-export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = ''): Promise<AnalysisResult> {
+export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== GEMINI FILE ANALYSIS PIPELINE ==========');
   console.log(`   File URI: ${geminiFileUri}`);
 
-  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri, jerseyColor);
+  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri, jerseyColor, opponentJerseyColor);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }

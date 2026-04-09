@@ -21,6 +21,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const focus = req.body?.focus || 'all';
     const teamName = req.body?.teamName || '';
     const jerseyColor = req.body?.jerseyColor || '';
+    const opponentJerseyColor = req.body?.opponentJerseyColor || '';
 
     // Fetch roster from MongoDB
     let roster = '';
@@ -41,14 +42,14 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       if (IMAGE_EXTS.includes(ext)) {
         result = await analyzeImage(req.file.path, context, focus, teamName, roster);
       } else {
-        result = await analyzeVideo(req.file.path, context, focus, teamName, roster, jerseyColor);
+        result = await analyzeVideo(req.file.path, context, focus, teamName, roster, jerseyColor, opponentJerseyColor);
       }
 
     } else if (req.body?.geminiFileUri) {
       console.log('📡 Using pre-uploaded Gemini file');
-      result = await analyzeGeminiFile(req.body.geminiFileUri, context, focus, teamName, roster, jerseyColor);
+      result = await analyzeGeminiFile(req.body.geminiFileUri, context, focus, teamName, roster, jerseyColor, opponentJerseyColor);
     } else if (youtubeUrl) {
-      result = await analyzeYouTube(youtubeUrl, context, focus, teamName, roster, jerseyColor);
+      result = await analyzeYouTube(youtubeUrl, context, focus, teamName, roster, jerseyColor, opponentJerseyColor);
     } else {
       res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
       return;

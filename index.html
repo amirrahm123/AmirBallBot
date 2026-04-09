@@ -245,6 +245,10 @@ textarea{resize:vertical;min-height:80px}
           <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">צבע חולצה</label>
           <input type="text" id="jersey-color" placeholder="צבע חולצה — למשל: אדום, לבן, צהוב" style="direction:rtl">
         </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">צבע חולצה יריב</label>
+          <input type="text" id="opponent-jersey-color" placeholder="צבע חולצה של היריב — למשל: צהוב, לבן, שחור" style="direction:rtl">
+        </div>
         <textarea id="game-context" placeholder="לדוגמה: הפועל חיפה נגד מכבי רעננה, ליגה לאומית, סיבוב 12. אנחנו צריכים לנצח כדי להישאר בפלייאוף..."></textarea>
       </div>
 
@@ -485,6 +489,9 @@ teamNameInput.addEventListener('input', () => localStorage.setItem('teamName', t
 const jerseyColorInput = document.getElementById('jersey-color');
 jerseyColorInput.value = localStorage.getItem('jerseyColor') || '';
 jerseyColorInput.addEventListener('input', () => localStorage.setItem('jerseyColor', jerseyColorInput.value));
+const opponentJerseyColorInput = document.getElementById('opponent-jersey-color');
+opponentJerseyColorInput.value = localStorage.getItem('opponentJerseyColor') || '';
+opponentJerseyColorInput.addEventListener('input', () => localStorage.setItem('opponentJerseyColor', opponentJerseyColorInput.value));
 
 // === Navigation ===
 document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
@@ -632,6 +639,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     formData.append('focus', focus);
     formData.append('teamName', document.getElementById('team-name').value.trim() || 'הקבוצה שלי');
     formData.append('jerseyColor', document.getElementById('jersey-color').value.trim());
+    formData.append('opponentJerseyColor', document.getElementById('opponent-jersey-color').value.trim());
 
     document.getElementById('upload-progress').classList.add('hidden');
 
