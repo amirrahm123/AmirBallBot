@@ -260,12 +260,7 @@ async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: str
 
 Your job is to identify the most significant plays and decompose each one into a full sequence — from how possession was gained to how the play finished.
 
-Number of plays to identify:
-- Under 3 minutes: 4-5 plays
-- 3-10 minutes: MAXIMUM 8 plays — if you identify more than 8, keep only the 8 most significant ones and drop the rest
-- 10-30 minutes: 10-15 plays
-- 30-60 minutes: 15-20 plays
-- 60+ minutes: 25-30 plays
+Number of plays to identify: detect 11-13 most significant plays.
 
 SIGNIFICANCE THRESHOLD — only include a play if it meets at least one of these criteria:
 - Score change (basket made)
