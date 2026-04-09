@@ -277,7 +277,7 @@ NEVER use player names in any field.
 Use jersey numbers only: "#11", "#0", etc.
 
 ═══ YOUR TASK ═══
-Watch this video and identify 8-13 significant plays. Return them as a JSON array.
+Watch this video and identify 8-13 significant plays. For every missed shot, actively check what happened next — did the ball go out, was there a rebound, did the offense score a second chance? Each of these is a separate entry. Return them as a JSON array.
 
 A significant play is ONE of:
 1. Analyzing team (${jerseyColor || 'unknown'}) scores
@@ -302,7 +302,7 @@ Offensive half court:
 - post_up_finish = player received ball IN the paint or low post, finishes from there
 - post_up_pass_out = player received in post, could not finish, passed back out to shooter
 - high_low = pass from high post (elbow/free throw line) to low post cutter under the basket
-- drive_and_kick = ball handler drives, defense collapses, kicks out to open shooter. The finish belongs to the SHOOTER not the driver
+- *** CRITICAL — drive_and_kick: The play belongs to the SHOOTER. The player who PASSED is NOT the finisher. setup = describe the driver. action = describe the shooter catching and scoring. players array = [driver_number, shooter_number]
 - backdoor_cut = player cuts behind overplaying defender to receive lob near basket
 - skip_pass_corner_3 = long cross-court pass to corner shooter
 - elevator_screen = two players open and close like elevator doors for shooter running through
@@ -390,6 +390,7 @@ Only "layup" if continuous momentum, no stop.
 Only "dunk" if you CLEARLY see hands above rim.
 Player stops and jumps near basket = "pull_up_mid".
 When unsure = "unknown_finish".
+NEVER assume a shot was made unless you clearly see the ball pass through the net. If the shot misses, write missed_3 or missed_2. After a missed shot — check: did anyone get the offensive rebound and score? If yes, that is a SEPARATE play entry with playType offensive_rebound_putback.
 
 RULE 4 — WHISTLE/FOUL:
 Whistle = play ends immediately.
@@ -400,6 +401,10 @@ RULE 5 — CAMERA CUTS:
 Cut during play = play ends there.
 Never combine two possessions.
 New possession = new play entry.
+A deflection off a missed shot that causes the ball to go out of bounds is NOT a defensive play. Write it as: perspective: offense, finish: out_of_bounds, possession_origin: deflection. Do NOT write it as opponent scoring.
+
+RULE 5B — REPLAY/CLOSE-UP CAMERA:
+If the camera zooms in on a player's face, a celebration, a slow-motion replay, or a close-up of the basket AFTER a play already ended — IGNORE. This is not a new play. A new play only starts when the ball is live from a standard broadcast wide-angle view.
 
 RULE 6 — ALLEY OOP:
 Requires: lob pass + mid-air catch near basket.
@@ -418,7 +423,7 @@ out_of_bounds by offense = perspective "offense", type "transition" (turnover)
 Jump balls = skip unless immediate score follows.
 
 RULE 9 — SETUP AND ACTION FIELDS:
-setup = ONE sentence only. Physical description of what happened before the finish. Jersey numbers only. No names. Example: "#11 receives ball on left wing, drives middle past #21 of opponent."
+setup = 1-2 sentences. For chain plays (pick and roll → defensive collapse → open cutter), describe ALL phases: what the first action was, how the defense reacted, what space was created. Jersey numbers only. No names. Example: "#11 receives ball on left wing, drives middle past #21 of opponent."
 action = ONE sentence only. The decisive moment. Example: "#11 pulls up at free throw line and releases jump shot."
 description = ONE sentence in English. Full sequence from origin to finish. Jersey numbers only. No names.
 
