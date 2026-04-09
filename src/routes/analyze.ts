@@ -14,6 +14,7 @@ const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
 // POST with multipart form data (file upload + youtube URL)
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  const filePath = req.file?.path;
   try {
     const youtubeUrl = req.body?.youtube_url;
     const context = req.body?.context || '';
@@ -41,8 +42,6 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       } else {
         result = await analyzeVideo(req.file.path, context, focus, teamName, roster);
       }
-
-      try { fs.unlinkSync(req.file.path); } catch {}
 
     } else if (req.body?.geminiFileUri) {
       console.log('📡 Using pre-uploaded Gemini file');
@@ -74,6 +73,10 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('❌ שגיאה בניתוח:', err);
     res.status(500).json({ error: err.message || 'שגיאה בניתוח' });
+  } finally {
+    if (filePath) {
+      try { fs.unlinkSync(filePath); } catch {}
+    }
   }
 });
 

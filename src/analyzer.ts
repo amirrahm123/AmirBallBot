@@ -171,6 +171,12 @@ export async function analyzeFrames(frames: FrameWithTime[], context: string, fo
     });
   });
 
+  // Cleanup frame files after reading into memory
+  const frameDirs = new Set(frames.map(f => path.dirname(f.path)));
+  frameDirs.forEach(dir => {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  });
+
   const geminiContext = geminiDescription
     ? `\n\nתיאור וידאו מ-AI נוסף (השתמש כהקשר בלבד):\n${geminiDescription}\n`
     : '';
