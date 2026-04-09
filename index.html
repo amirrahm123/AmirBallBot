@@ -241,6 +241,10 @@ textarea{resize:vertical;min-height:80px}
           <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">שם הקבוצה</label>
           <input type="text" id="team-name" placeholder="הקבוצה שלי" style="direction:rtl">
         </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;color:var(--text3);display:block;margin-bottom:6px">צבע חולצה</label>
+          <input type="text" id="jersey-color" placeholder="צבע חולצה — למשל: אדום, לבן, צהוב" style="direction:rtl">
+        </div>
         <textarea id="game-context" placeholder="לדוגמה: הפועל חיפה נגד מכבי רעננה, ליגה לאומית, סיבוב 12. אנחנו צריכים לנצח כדי להישאר בפלייאוף..."></textarea>
       </div>
 
@@ -478,6 +482,9 @@ let ytPlayer = null;
 const teamNameInput = document.getElementById('team-name');
 teamNameInput.value = localStorage.getItem('teamName') || '';
 teamNameInput.addEventListener('input', () => localStorage.setItem('teamName', teamNameInput.value));
+const jerseyColorInput = document.getElementById('jersey-color');
+jerseyColorInput.value = localStorage.getItem('jerseyColor') || '';
+jerseyColorInput.addEventListener('input', () => localStorage.setItem('jerseyColor', jerseyColorInput.value));
 
 // === Navigation ===
 document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
@@ -624,6 +631,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     formData.append('context', context);
     formData.append('focus', focus);
     formData.append('teamName', document.getElementById('team-name').value.trim() || 'הקבוצה שלי');
+    formData.append('jerseyColor', document.getElementById('jersey-color').value.trim());
 
     document.getElementById('upload-progress').classList.add('hidden');
 

@@ -248,7 +248,7 @@ interface GeminiPlay {
 }
 
 /** STEP 1: Send full video to Gemini for play detection */
-async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: string): Promise<GeminiPlay[]> {
+async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: string, jerseyColor?: string): Promise<GeminiPlay[]> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
   const { GoogleAIFileManager, FileState } = await import('@google/generative-ai/server');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -257,7 +257,7 @@ async function analyzeFullVideoWithGemini(videoPath: string, geminiFileUri?: str
   console.log(`\n🔮 [1/3] Gemini full video analysis${geminiFileUri ? ' (pre-uploaded file)' : ` (${fileSizeMB.toFixed(1)}MB)`}...`);
 
   const prompt = `You are a professional basketball analyst. Watch this video carefully.
-
+${jerseyColor ? `\nצבע חולצה של הקבוצה: ${jerseyColor}\n` : ''}
 Your job is to identify the most significant plays and decompose each one into a full sequence — from how possession was gained to how the play finished.
 
 Number of plays to identify: detect 11-13 most significant plays.
@@ -578,9 +578,9 @@ ${JSON.stringify(plays, null, 2)}`,
 }
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
-async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string): Promise<AnalysisResult> {
+async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string): Promise<AnalysisResult> {
   // Step 1: Gemini detects plays from full video
-  const geminiPlays = await analyzeFullVideoWithGemini(videoPath, geminiFileUri);
+  const geminiPlays = await analyzeFullVideoWithGemini(videoPath, geminiFileUri, jerseyColor);
 
   // Step 2: Claude enriches with Hebrew coaching analysis
   const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
@@ -620,7 +620,7 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 // ============================================================
 
 /** Analyze YouTube — download → Gemini → Claude */
-export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = ''): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
@@ -629,7 +629,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
   const videoPath = downloadYouTube(url);
 
   try {
-    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster);
+    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor);
     console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
     return result;
   } finally {
@@ -640,10 +640,10 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file */
-export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = ''): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
 
-  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster);
+  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
@@ -655,11 +655,11 @@ export async function analyzeImage(imagePath: string, context: string, focus: st
 }
 
 /** Analyze a video already uploaded to Gemini Files API */
-export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = ''): Promise<AnalysisResult> {
+export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = ''): Promise<AnalysisResult> {
   console.log('\n🏀 ========== GEMINI FILE ANALYSIS PIPELINE ==========');
   console.log(`   File URI: ${geminiFileUri}`);
 
-  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri);
+  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri, jerseyColor);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
