@@ -338,10 +338,19 @@ SEQUENCE RULES — critical:
   if (geminiFileUri) {
     // File already uploaded by browser — use directly
     console.log('   ✅ Using pre-uploaded Gemini file');
-    result = await retryWithBackoff(() => model25.generateContent([
-      { fileData: { mimeType: 'video/mp4', fileUri: geminiFileUri } },
-      { text: prompt },
-    ]));
+    result = await retryWithBackoff(async () => {
+      const res = await model25.generateContent([
+        { fileData: { mimeType: 'video/mp4', fileUri: geminiFileUri } },
+        { text: prompt },
+      ]);
+      const text = res.response.text();
+      if (!text || text.trim().length === 0) {
+        const emptyErr = new Error('Gemini returned empty response');
+        (emptyErr as any).status = 503;
+        throw emptyErr;
+      }
+      return res;
+    });
   } else if (fileSizeMB > 15) {
     // Use Gemini Files API for large files
     console.log('   📤 Uploading to Gemini Files API...');
@@ -363,10 +372,19 @@ SEQUENCE RULES — critical:
     }
     console.log('   ✅ File ready');
 
-    result = await retryWithBackoff(() => model25.generateContent([
-      { fileData: { mimeType: 'video/mp4', fileUri: file.uri } },
-      { text: prompt },
-    ]));
+    result = await retryWithBackoff(async () => {
+      const res = await model25.generateContent([
+        { fileData: { mimeType: 'video/mp4', fileUri: file.uri } },
+        { text: prompt },
+      ]);
+      const text = res.response.text();
+      if (!text || text.trim().length === 0) {
+        const emptyErr = new Error('Gemini returned empty response');
+        (emptyErr as any).status = 503;
+        throw emptyErr;
+      }
+      return res;
+    });
 
     // Cleanup uploaded file
     try { await fileManager.deleteFile(file.name); } catch {}
@@ -374,10 +392,19 @@ SEQUENCE RULES — critical:
     // Use inline base64 for small files
     console.log('   📦 Using inline base64...');
     const videoData = fs.readFileSync(videoPath).toString('base64');
-    result = await retryWithBackoff(() => model25.generateContent([
-      { inlineData: { mimeType: 'video/mp4', data: videoData } },
-      { text: prompt },
-    ]));
+    result = await retryWithBackoff(async () => {
+      const res = await model25.generateContent([
+        { inlineData: { mimeType: 'video/mp4', data: videoData } },
+        { text: prompt },
+      ]);
+      const text = res.response.text();
+      if (!text || text.trim().length === 0) {
+        const emptyErr = new Error('Gemini returned empty response');
+        (emptyErr as any).status = 503;
+        throw emptyErr;
+      }
+      return res;
+    });
   }
 
   const rawText = result.response.text();
