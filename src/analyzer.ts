@@ -399,8 +399,22 @@ SEQUENCE RULES — critical:
   try {
     parsedPlays = JSON.parse(jsonMatch[0]);
   } catch (e) {
-    console.log('JSON parse failed. Raw match (first 1000):', jsonMatch[0].substring(0, 1000));
-    throw new Error('Failed to parse Gemini JSON: ' + (e as Error).message);
+    console.log('JSON parse failed, attempting repair...');
+    // Attempt to fix truncated JSON by finding the last complete object
+    const raw = jsonMatch[0];
+    const lastComplete = raw.lastIndexOf('},');
+    if (lastComplete > 0) {
+      const repaired = raw.substring(0, lastComplete + 1) + ']';
+      try {
+        parsedPlays = JSON.parse(repaired);
+        console.log(`✅ JSON repaired — recovered ${parsedPlays.length} plays`);
+      } catch (e2) {
+        console.log('JSON repair failed. Raw (first 1000):', jsonMatch[0].substring(0, 1000));
+        throw new Error('Failed to parse Gemini JSON: ' + (e as Error).message);
+      }
+    } else {
+      throw new Error('Failed to parse Gemini JSON: ' + (e as Error).message);
+    }
   }
   console.log('GEMINI RAW OUTPUT:', JSON.stringify(parsedPlays, null, 2));
   console.log(`   ✅ Detected ${parsedPlays.length} plays`);
