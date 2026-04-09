@@ -345,6 +345,11 @@ Rules:
     console.log('🔍 jsonMatch found:', !!jsonMatch);
     if (!jsonMatch) {
       console.log('⚠️ No timestamp array found. Full rawText:', rawText);
+      const fallbackMatches = rawText.match(/\d{2}:\d{2}/g);
+      if (fallbackMatches && fallbackMatches.length > 0) {
+        console.log(`⚠️ Using fallback extraction: ${fallbackMatches.length} timestamps`);
+        return fallbackMatches.slice(0, 25);
+      }
       return [];
     }
     const timestamps: string[] = JSON.parse(jsonMatch[0]);
