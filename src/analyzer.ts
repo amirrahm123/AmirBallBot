@@ -61,9 +61,12 @@ async function retryWithBackoff(fn: () => Promise<any>, retries = 4): Promise<an
       return await fn();
     } catch (err: any) {
       const is503 = err?.status === 503 ||
+        err?.status === 529 ||
         err?.message?.includes('503') ||
+        err?.message?.includes('529') ||
         err?.message?.includes('high demand') ||
-        err?.message?.includes('overloaded');
+        err?.message?.includes('overloaded') ||
+        err?.message?.includes('Overloaded');
       if (is503 && i < retries - 1) {
         const delay = Math.pow(2, i) * 5000;
         console.log(`Gemini 503 — retry ${i + 1}/${retries} in ${delay / 1000}s...`);
