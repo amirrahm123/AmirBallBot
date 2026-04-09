@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Analysis } from '../database';
+import { Analysis, Verification } from '../database';
 
 const router = Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-router.post('/verify/:analysisId', async (req, res) => {
+router.post('/verify/:analysisId', async (req: Request, res: Response) => {
   try {
     const analysis = await Analysis.findById(req.params.analysisId);
     if (!analysis) {
@@ -17,38 +17,32 @@ router.post('/verify/:analysisId', async (req, res) => {
       return res.status(400).json({ error: 'No plays to verify' });
     }
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash'
-    });
-
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const results = [];
 
-    for (const play of plays) {
-      const prompt = `
-You are a basketball play verifier.
+    for (let i = 0; i < plays.length; i++) {
+      const play = plays[i];
+      const prompt = `You are verifying a basketball play analysis.
 
-Here is a play description from an analysis:
+Play #${i + 1}:
+Time: ${play.startTime} to ${play.endTime}
 Label: "${play.label}"
 Note: "${play.note}"
-Time: ${play.startTime} to ${play.endTime}
 Type: ${play.type}
+Play Type: ${play.playType || 'unknown'}
 Players: ${(play.players || []).join(', ')}
 
-Based ONLY on this description, answer these questions:
+Based on this description, evaluate if it is internally consistent and plausible:
+- Does the play type match the description?
+- Are the player references consistent?
+- Does the timing make sense?
+- Is the Hebrew description coherent?
 
-1. VERDICT: Is this description CORRECT, PARTIALLY_CORRECT, or WRONG?
-2. PLAYER_ACCURACY: Are the player numbers/names mentioned correct? YES / NO / UNKNOWN
-3. PLAY_TYPE_ACCURACY: Is the play type label correct? YES / NO
-4. ISSUE: If wrong or partial, in one sentence what is the main problem?
-5. CONFIDENCE: How confident are you in your verdict? HIGH / MEDIUM / LOW
-
-Return ONLY a valid JSON object with no explanation:
+Return ONLY a valid JSON object:
 {
-  "verdict": "CORRECT | PARTIALLY_CORRECT | WRONG",
-  "player_accuracy": "YES | NO | UNKNOWN",
-  "play_type_accuracy": "YES | NO",
-  "issue": "description of issue or null if correct",
-  "confidence": "HIGH | MEDIUM | LOW"
+  "correct": true or false,
+  "actualPlay": "תיאור בעברית של מה שבאמת קורה לפי הנתונים",
+  "confidence": "high" | "medium" | "low"
 }`;
 
       try {
@@ -59,46 +53,63 @@ Return ONLY a valid JSON object with no explanation:
           .trim();
 
         const verification = JSON.parse(text);
-
         results.push({
+          index: i,
           startTime: play.startTime,
           endTime: play.endTime,
           label: play.label,
-          ...verification
+          playType: play.playType || 'unknown',
+          correct: verification.correct,
+          actualPlay: verification.actualPlay,
+          confidence: verification.confidence,
         });
       } catch (e) {
         results.push({
+          index: i,
           startTime: play.startTime,
           endTime: play.endTime,
           label: play.label,
-          verdict: 'ERROR',
-          issue: 'Verification failed',
-          confidence: 'LOW'
+          playType: play.playType || 'unknown',
+          correct: false,
+          actualPlay: 'שגיאה באימות',
+          confidence: 'low',
         });
       }
     }
 
-    const correct = results.filter(r => r.verdict === 'CORRECT').length;
-    const partial = results.filter(r => r.verdict === 'PARTIALLY_CORRECT').length;
-    const wrong = results.filter(r => r.verdict === 'WRONG').length;
+    const correctCount = results.filter(r => r.correct).length;
     const total = results.length;
-    const accuracyScore = Math.round(((correct + partial * 0.5) / total) * 100);
+    const geminiAccuracy = Math.round((correctCount / total) * 100);
 
     res.json({
       analysisId: req.params.analysisId,
-      summary: {
-        total,
-        correct,
-        partially_correct: partial,
-        wrong,
-        accuracy_score: accuracyScore
-      },
-      plays: results
+      geminiAccuracy,
+      totalPlays: total,
+      plays: results,
     });
 
   } catch (err) {
     console.error('Verify error:', err);
     res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// Save verification score
+router.post('/save/:analysisId', async (req: Request, res: Response) => {
+  try {
+    const { geminiAccuracy, coachAccuracy, totalPlays, wrongPlays } = req.body;
+    const verification = await Verification.create({
+      analysisId: req.params.analysisId,
+      geminiAccuracy,
+      coachAccuracy,
+      totalPlays,
+      wrongPlays: wrongPlays || [],
+    });
+    console.log(`💾 Verification saved: ${verification._id}`);
+    res.json({ success: true, id: verification._id });
+  } catch (err) {
+    console.error('Save verification error:', err);
+    res.status(500).json({ error: 'Failed to save verification' });
   }
 });
 

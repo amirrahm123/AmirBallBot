@@ -55,14 +55,15 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 
     // Save analysis record
     try {
-      await Analysis.create({
+      const savedAnalysis = await Analysis.create({
         teamName: teamName || 'לא ידוע',
         focus,
         plays: result.plays,
         insights: result.insights,
         playCount: result.plays?.length || 0,
       });
-      console.log('💾 Analysis saved');
+      (result as any).analysisId = savedAnalysis._id;
+      console.log(`💾 Analysis saved: ${savedAnalysis._id}`);
     } catch (dbErr) {
       console.warn('⚠️ Analysis save failed (continuing):', dbErr);
     }

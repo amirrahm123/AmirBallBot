@@ -125,6 +125,16 @@ const AnalysisSchema = new mongoose.Schema({
 });
 export const Analysis = mongoose.model('Analysis', AnalysisSchema);
 
+const VerificationSchema = new mongoose.Schema({
+  analysisId: { type: Schema.Types.ObjectId, ref: 'Analysis' },
+  geminiAccuracy: Number,
+  coachAccuracy: Number,
+  totalPlays: Number,
+  wrongPlays: Array,
+  createdAt: { type: Date, default: Date.now },
+});
+export const Verification = mongoose.model('Verification', VerificationSchema);
+
 // === Connect ===
 
 export async function connectDB(): Promise<void> {

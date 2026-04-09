@@ -316,6 +316,14 @@ textarea{resize:vertical;min-height:80px}
 
       <!-- Results state -->
       <div id="analysis-results" class="hidden">
+        <!-- Verification bar -->
+        <div id="verify-bar" class="card hidden" style="display:flex;align-items:center;gap:16px;padding:12px 16px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" id="verify-btn" onclick="runVerification()">🔍 בדוק דיוק</button>
+          <span id="verify-score" style="font-size:14px;font-weight:700;color:var(--text2)"></span>
+          <span id="verify-spinner" class="hidden" style="font-size:13px;color:var(--text3)">⏳ בודק מהלכים...</span>
+          <button class="btn btn-primary btn-sm hidden" id="verify-save-btn" onclick="saveVerification()">💾 שמור ציון</button>
+        </div>
+
         <div class="stats-row" id="stat-cards"></div>
 
         <!-- Video player -->
@@ -733,6 +741,17 @@ function renderAnalysis(data) {
   // Setup video player
   setupVideoPlayer();
 
+  // Show verify bar if we have an analysis ID
+  const verifyBar = document.getElementById('verify-bar');
+  if (data.analysisId || data._id) {
+    verifyBar.classList.remove('hidden');
+    verifyBar.dataset.analysisId = data.analysisId || data._id;
+  } else {
+    verifyBar.classList.add('hidden');
+  }
+  document.getElementById('verify-score').textContent = '';
+  document.getElementById('verify-save-btn').classList.add('hidden');
+
   // Stat cards
   const plays = data.plays || [];
   const insights = data.insights || [];
@@ -754,14 +773,20 @@ function renderAnalysis(data) {
     const typeLabel = p.type === 'Offense' || p.type === 'offense' ? 'התקפה' : p.type === 'Defense' || p.type === 'defense' ? 'הגנה' : 'מעבר';
     const timeDisplay = p.startTime && p.endTime ? `${p.startTime} - ${p.endTime}` : (p.time||'');
     const seekTime = parseTimeToSeconds(p.startTime || p.time);
-    return `<div class="play-item" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
+    return `<div class="play-item" id="play-card-${i}" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
       <div class="play-header">
         <span class="play-time" onclick="event.stopPropagation();seekVideo(${seekTime})" style="cursor:pointer" title="דלג לזמן זה">${timeDisplay}</span>
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
         <span class="play-players">${(p.players||[]).join(', ')}</span>
+        <span class="verify-icon" id="verify-icon-${i}" style="margin-right:auto;font-size:16px"></span>
       </div>
       <div class="play-note">${p.note||''}</div>
+      <div class="verify-actual hidden" id="verify-actual-${i}" style="color:#E8621A;font-size:13px;padding:6px 0;border-top:1px solid var(--border)"></div>
+      <div class="verify-buttons hidden" id="verify-buttons-${i}" style="display:flex;gap:8px;padding:6px 0" onclick="event.stopPropagation()">
+        <button class="btn btn-sm" style="font-size:12px;padding:4px 12px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="coachOverride(${i},true)">✅ כן</button>
+        <button class="btn btn-sm" style="font-size:12px;padding:4px 12px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="coachOverride(${i},false)">❌ לא</button>
+      </div>
     </div>`;
   }).join('');
 
@@ -1143,6 +1168,127 @@ document.querySelector('[data-screen="saved"]').addEventListener('click', () => 
 
 // Initial roster load attempt
 loadRoster();
+
+// === Verification system ===
+let verificationResults = [];
+let coachVerdicts = {};
+
+async function runVerification() {
+  const bar = document.getElementById('verify-bar');
+  const analysisId = bar.dataset.analysisId;
+  if (!analysisId) return alert('אין מזהה ניתוח');
+
+  const btn = document.getElementById('verify-btn');
+  const spinner = document.getElementById('verify-spinner');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  verificationResults = [];
+  coachVerdicts = {};
+
+  try {
+    const res = await fetch(API + '/api/verify/verify/' + analysisId, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    verificationResults = data.plays || [];
+
+    verificationResults.forEach((v, i) => {
+      const icon = document.getElementById('verify-icon-' + i);
+      const actual = document.getElementById('verify-actual-' + i);
+      const buttons = document.getElementById('verify-buttons-' + i);
+
+      if (v.correct && v.confidence === 'high') {
+        icon.textContent = '✅';
+      } else if (v.correct) {
+        icon.textContent = '⚠️';
+      } else {
+        icon.textContent = '❌';
+        if (v.actualPlay) {
+          actual.textContent = v.actualPlay;
+          actual.classList.remove('hidden');
+        }
+      }
+      buttons.classList.remove('hidden');
+    });
+
+    updateVerifyScore();
+    document.getElementById('verify-save-btn').classList.remove('hidden');
+  } catch (err) {
+    alert('שגיאה באימות: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('hidden');
+  }
+}
+
+function coachOverride(index, isCorrect) {
+  coachVerdicts[index] = isCorrect;
+  const icon = document.getElementById('verify-icon-' + index);
+  icon.textContent = isCorrect ? '✅' : '❌';
+  const actual = document.getElementById('verify-actual-' + index);
+  if (isCorrect) actual.classList.add('hidden');
+  updateVerifyScore();
+}
+
+function updateVerifyScore() {
+  const total = verificationResults.length;
+  if (total === 0) return;
+  let correct = 0;
+  for (let i = 0; i < total; i++) {
+    if (i in coachVerdicts) {
+      if (coachVerdicts[i]) correct++;
+    } else if (verificationResults[i]?.correct) {
+      correct++;
+    }
+  }
+  const pct = Math.round((correct / total) * 100);
+  document.getElementById('verify-score').textContent = `דיוק: ${correct}/${total} (${pct}%)`;
+}
+
+async function saveVerification() {
+  const bar = document.getElementById('verify-bar');
+  const analysisId = bar.dataset.analysisId;
+  if (!analysisId) return;
+
+  const total = verificationResults.length;
+  const geminiCorrect = verificationResults.filter(v => v.correct).length;
+  let coachCorrect = 0;
+  const wrongPlays = [];
+
+  for (let i = 0; i < total; i++) {
+    const isCorrect = i in coachVerdicts ? coachVerdicts[i] : verificationResults[i]?.correct;
+    if (isCorrect) {
+      coachCorrect++;
+    } else {
+      wrongPlays.push({
+        index: i,
+        playType: verificationResults[i]?.playType,
+        startTime: verificationResults[i]?.startTime,
+        geminiSaid: verificationResults[i]?.actualPlay,
+        coachVerdict: i in coachVerdicts ? 'wrong' : 'gemini_wrong',
+      });
+    }
+  }
+
+  try {
+    const res = await fetch(API + '/api/verify/save/' + analysisId, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        geminiAccuracy: Math.round((geminiCorrect / total) * 100),
+        coachAccuracy: Math.round((coachCorrect / total) * 100),
+        totalPlays: total,
+        wrongPlays,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    alert('ציון נשמר בהצלחה!');
+    document.getElementById('verify-save-btn').disabled = true;
+  } catch (err) {
+    alert('שגיאה בשמירה: ' + err.message);
+  }
+}
 </script>
 </body>
 </html>
