@@ -298,8 +298,8 @@ Offensive half court:
 - pick_and_pop = screener pops to perimeter for jump shot instead of rolling
 - dribble_handoff = ball handler dribbles toward teammate and hands off while moving
 - isolation_drive = one on one, player drives to basket
-- isolation_fadeaway = one on one, player shoots jumping away from defender
-- post_up_finish = player received ball IN the paint or low post, finishes from there
+- isolation_fadeaway = one on one, player shoots jumping away from defender. If the shot misses and ball goes out of bounds, finish = out_of_bounds NOT missed_2. NEVER assume the shot went in — only write made_2 if you clearly see the ball go through the net.
+- post_up_finish = player received ball IN the paint or low post, finishes from there. STRICT LOCATION RULE: if player received ball outside the paint or beyond the three point line, this is NEVER post_up_finish — use isolation_drive or isolation_fadeaway instead, regardless of which player it is or their usual tendencies. A spin move or dribble move that creates separation = isolation type, not post.
 - post_up_pass_out = player received in post, could not finish, passed back out to shooter
 - high_low = pass from high post (elbow/free throw line) to low post cutter under the basket
 - *** CRITICAL — drive_and_kick: The play belongs to the SHOOTER. The player who PASSED is NOT the finisher. setup = describe the driver. action = describe the shooter catching and scoring. players array = [driver_number, shooter_number]
@@ -341,7 +341,7 @@ FINISH TYPES — pick the most precise:
 "hook_shot" = sweeping one-arm shot, body fully sideways to basket.
 "catch_and_shoot" = player catches pass and shoots immediately without dribbling.
 "made_3" = 3-point shot goes in.
-"missed_3" = 3-point shot misses.
+"missed_3" = 3-point shot misses. Step-back 3-pointers miss more often than they go in — do NOT assume a step-back shot was made. Only write made_3 if you clearly see the ball pass through the net from the standard broadcast angle.
 "made_2" = catch-and-shoot mid-range that scores, or shot type unclear but 2-pointer scores.
 "missed_2" = catch-and-shoot mid-range misses, or shot type unclear but 2-pointer misses.
 "tip_in" = offensive rebound tapped in softly.
@@ -404,7 +404,7 @@ New possession = new play entry.
 A deflection off a missed shot that causes the ball to go out of bounds is NOT a defensive play. Write it as: perspective: offense, finish: out_of_bounds, possession_origin: deflection. Do NOT write it as opponent scoring.
 
 RULE 5B — REPLAY/CLOSE-UP CAMERA:
-If the camera zooms in on a player's face, a celebration, a slow-motion replay, or a close-up of the basket AFTER a play already ended — IGNORE. This is not a new play. A new play only starts when the ball is live from a standard broadcast wide-angle view.
+If the camera zooms in on a player's face, a celebration, a slow-motion replay, or a close-up of the basket AFTER a play already ended — IGNORE. This is not a new play. A new play only starts when the ball is live from a standard broadcast wide-angle view. This includes behind-the-basket camera angles, under-rim cameras, and any angle that is clearly not the main broadcast view — all of these are IGNORE even if a basketball action appears to be happening.
 
 RULE 6 — ALLEY OOP:
 Requires: lob pass + mid-air catch near basket.
