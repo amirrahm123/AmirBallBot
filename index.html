@@ -643,7 +643,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
     // Timeout after 8 minutes
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8 * 60 * 1000);
+    const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
 
     // Rotating status messages
     const statusEl = document.querySelector('#analysis-processing p');
