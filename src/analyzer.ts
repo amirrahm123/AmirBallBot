@@ -308,7 +308,8 @@ Rules:
 - Maximum 25 timestamps.
 - If two events are within 15 seconds of each other, keep only one.
 - The analyzing team wears ${jerseyColor}. Opponent wears ${opponentJerseyColor}.
-- Focus on plays involving the analyzing team.`;
+- Focus on plays involving the analyzing team.
+- IMPORTANT: Only include timestamps where the shot clock is visible on screen. If the shot clock is not visible (replay, celebration, timeout, close-up) — skip that moment.`;
 
   try {
     const rawResponse = await retryWithBackoff(async () => {
