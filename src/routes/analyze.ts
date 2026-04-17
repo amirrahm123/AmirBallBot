@@ -176,4 +176,30 @@ router.post('/upload-video', upload.single('file'), async (req: Request, res: Re
   }
 });
 
+// GET /api/job/:jobId — poll job status
+export const jobRouter = Router();
+
+jobRouter.get('/:jobId', async (req: Request, res: Response) => {
+  try {
+    const job = await Job.findOne({ jobId: req.params.jobId });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    res.json({
+      jobId: job.jobId,
+      status: job.status,
+      progress: job.progress,
+      progressMessage: job.progressMessage,
+      result: job.result,
+      error: job.error,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    });
+  } catch (err: any) {
+    console.error(`❌ Job lookup failed for ${req.params.jobId}:`, err);
+    res.status(500).json({ error: err?.message || 'שגיאה בשליפת עבודה' });
+  }
+});
+
 export default router;

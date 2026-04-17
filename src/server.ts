@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './database';
-import analyzeRouter from './routes/analyze';
+import analyzeRouter, { jobRouter } from './routes/analyze';
 import chatRouter from './routes/chat';
 import playersRouter from './routes/players';
 import knowledgeRouter from './routes/knowledge';
@@ -35,6 +35,7 @@ app.get('/health', (_req, res) => {
 
 // API routes
 app.use('/api/analyze', analyzeRouter);
+app.use('/api/job', jobRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/players', playersRouter);
 app.use('/api/knowledge', knowledgeRouter);
