@@ -135,6 +135,45 @@ const VerificationSchema = new mongoose.Schema({
 });
 export const Verification = mongoose.model('Verification', VerificationSchema);
 
+// === Job Queue ===
+
+export interface IJob extends Document {
+  jobId: string;
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  progress: number;
+  progressMessage: string;
+  input: Record<string, any>;
+  result: Record<string, any> | null;
+  error: string;
+  userId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const JobSchema = new Schema<IJob>({
+  jobId: { type: String, required: true, unique: true, index: true },
+  status: {
+    type: String,
+    enum: ['pending', 'processing', 'done', 'failed'],
+    default: 'pending',
+  },
+  progress: { type: Number, default: 0 },
+  progressMessage: { type: String, default: '' },
+  input: { type: Schema.Types.Mixed, default: {} },
+  result: { type: Schema.Types.Mixed, default: null },
+  error: { type: String, default: '' },
+  userId: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+JobSchema.pre('save', function (next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+export const Job = mongoose.model<IJob>('Job', JobSchema);
+
 // === Connect ===
 
 export async function connectDB(): Promise<void> {
