@@ -51,6 +51,8 @@ export interface AnalysisResult {
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
 }
 
+export type ProgressCb = (pct: number, msg: string) => void;
+
 function getClient(): Anthropic {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
@@ -767,12 +769,13 @@ ${JSON.stringify(plays, null, 2)}`,
 }
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
-async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string): Promise<AnalysisResult> {
+async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string, onProgress?: ProgressCb): Promise<AnalysisResult> {
   // Determine fileUri — upload if needed
   let fileUri = geminiFileUri || '';
   const mimeType = 'video/mp4';
 
   if (!fileUri && videoPath) {
+    onProgress?.(10, 'מעלה וידאו ל-Gemini...');
     const uploaded = await uploadVideoToGemini(videoPath);
     fileUri = uploaded.fileUri;
   }
@@ -783,8 +786,10 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 
   // Pass 1: detect timestamps
   console.log('🔍 [1/4] Detecting play timestamps...');
+  onProgress?.(20, 'מזהה רגעי משחק...');
   const timestamps = await detectPlayTimestamps(fileUri, mimeType, jerseyColor || '', opponentJerseyColor || '');
   console.log(`⏱️ Found ${timestamps.length} timestamps`);
+  onProgress?.(30, `נמצאו ${timestamps.length} מהלכים`);
 
   // Pass 2: analyze each clip
   console.log('🎬 [2/4] Analyzing individual clips...');
@@ -792,6 +797,8 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
   for (let i = 0; i < timestamps.length; i++) {
     const ts = timestamps[i];
     console.log(`   Clip ${i + 1}/${timestamps.length} at ${ts}`);
+    const clipPct = timestamps.length > 0 ? 30 + Math.round(((i + 1) / timestamps.length) * 60) : 90;
+    onProgress?.(clipPct, `מנתח קליפ ${i + 1} מתוך ${timestamps.length}`);
     const play = await analyzeClipAtTimestamp(fileUri, mimeType, ts, jerseyColor || '', opponentJerseyColor || '', teamName, roster, context);
     if (play) geminiPlays.push(play);
     if (i < timestamps.length - 1) await new Promise(r => setTimeout(r, 3000));
@@ -800,9 +807,11 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 
   // Step 3: Claude enriches with Hebrew coaching analysis
   console.log('🤖 [3/4] Claude enrichment...');
+  onProgress?.(92, 'Claude מעבד הערות אימון...');
   const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
 
   // Step 4: Claude generates coaching insights
+  onProgress?.(97, 'מייצר תובנות...');
   const insights = await generateInsightsFromPlays(enrichedPlays, context);
 
   return {
@@ -837,16 +846,17 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 // ============================================================
 
 /** Analyze YouTube — download → Gemini → Claude */
-export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = ''): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
   console.log(`   Context: ${context || '(none)'}`);
 
+  onProgress?.(2, 'מוריד וידאו מ-YouTube...');
   const videoPath = downloadYouTube(url);
 
   try {
-    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor);
+    const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor, onProgress);
     console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
     return result;
   } finally {
@@ -857,10 +867,10 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file */
-export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = ''): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
 
-  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor);
+  const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor, onProgress);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }
@@ -872,11 +882,11 @@ export async function analyzeImage(imagePath: string, context: string, focus: st
 }
 
 /** Analyze a video already uploaded to Gemini Files API */
-export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = ''): Promise<AnalysisResult> {
+export async function analyzeGeminiFile(geminiFileUri: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb): Promise<AnalysisResult> {
   console.log('\n🏀 ========== GEMINI FILE ANALYSIS PIPELINE ==========');
   console.log(`   File URI: ${geminiFileUri}`);
 
-  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri, jerseyColor, opponentJerseyColor);
+  const result = await runVideoPipeline('', context, focus, teamName, roster, geminiFileUri, jerseyColor, opponentJerseyColor, onProgress);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }

@@ -3,8 +3,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile } from '../analyzer';
-import { Player, Analysis } from '../database';
+import crypto from 'crypto';
+import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile, ProgressCb, AnalysisResult } from '../analyzer';
+import { Player, Analysis, Job } from '../database';
 import { GoogleGenAI, FileState } from '@google/genai';
 
 const router = Router();
@@ -12,54 +13,68 @@ const upload = multer({ dest: os.tmpdir() });
 
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
-// POST with multipart form data (file upload + youtube URL)
-router.post('/', upload.single('file'), async (req: Request, res: Response) => {
-  const filePath = req.file?.path;
-  try {
-    const youtubeUrl = req.body?.youtube_url;
-    const context = req.body?.context || '';
-    const focus = req.body?.focus || 'all';
-    const teamName = req.body?.teamName || '';
-    const jerseyColor = req.body?.jerseyColor || '';
-    const opponentJerseyColor = req.body?.opponentJerseyColor || '';
+type AnalyzeInput = {
+  youtubeUrl?: string;
+  geminiFileUri?: string;
+  context: string;
+  focus: string;
+  teamName: string;
+  jerseyColor: string;
+  opponentJerseyColor: string;
+  filePath?: string;
+  fileOriginalName?: string;
+};
 
-    // Fetch roster from MongoDB
+async function runAnalysis(input: AnalyzeInput, roster: string, onProgress: ProgressCb): Promise<AnalysisResult> {
+  const { youtubeUrl, geminiFileUri, context, focus, teamName, jerseyColor, opponentJerseyColor, filePath, fileOriginalName } = input;
+
+  if (filePath) {
+    const ext = path.extname(fileOriginalName || '').toLowerCase();
+    console.log(`📁 Uploaded file: ${fileOriginalName} (${ext})`);
+    if (IMAGE_EXTS.includes(ext)) {
+      return analyzeImage(filePath, context, focus, teamName, roster);
+    }
+    return analyzeVideo(filePath, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress);
+  }
+  if (geminiFileUri) {
+    console.log('📡 Using pre-uploaded Gemini file');
+    return analyzeGeminiFile(geminiFileUri, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress);
+  }
+  if (youtubeUrl) {
+    return analyzeYouTube(youtubeUrl, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress);
+  }
+  throw new Error('נדרש קובץ וידאו או קישור YouTube');
+}
+
+async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
+  const makeProgress = (): ProgressCb => (pct, msg) => {
+    Job.updateOne(
+      { jobId },
+      { $set: { progress: pct, progressMessage: msg, updatedAt: new Date() } },
+    ).catch((e) => console.warn(`⚠️ Job ${jobId} progress update failed:`, e));
+  };
+
+  try {
     let roster = '';
     try {
       const players = await Player.find().sort({ number: 1 });
-      roster = players.map(p => `#${p.number} ${p.name}`).join(', ');
+      roster = players.map((p) => `#${p.number} ${p.name}`).join(', ');
       console.log(`📋 Roster: ${roster || '(empty)'}`);
-    } catch { console.warn('⚠️ Could not fetch roster'); }
-
-    console.log(`📊 Analysis request — focus: ${focus}, youtube: ${!!youtubeUrl}, file: ${!!req.file}`);
-
-    let result;
-
-    if (req.file) {
-      const ext = path.extname(req.file.originalname).toLowerCase();
-      console.log(`📁 Uploaded file: ${req.file.originalname} (${ext})`);
-
-      if (IMAGE_EXTS.includes(ext)) {
-        result = await analyzeImage(req.file.path, context, focus, teamName, roster);
-      } else {
-        result = await analyzeVideo(req.file.path, context, focus, teamName, roster, jerseyColor, opponentJerseyColor);
-      }
-
-    } else if (req.body?.geminiFileUri) {
-      console.log('📡 Using pre-uploaded Gemini file');
-      result = await analyzeGeminiFile(req.body.geminiFileUri, context, focus, teamName, roster, jerseyColor, opponentJerseyColor);
-    } else if (youtubeUrl) {
-      result = await analyzeYouTube(youtubeUrl, context, focus, teamName, roster, jerseyColor, opponentJerseyColor);
-    } else {
-      res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
-      return;
+    } catch {
+      console.warn('⚠️ Could not fetch roster');
     }
 
-    // Save analysis record
+    await Job.updateOne(
+      { jobId },
+      { $set: { status: 'processing', progress: 5, progressMessage: 'Starting analysis...', updatedAt: new Date() } },
+    );
+
+    const result = await runAnalysis(input, roster, makeProgress());
+
     try {
       const savedAnalysis = await Analysis.create({
-        teamName: teamName || 'לא ידוע',
-        focus,
+        teamName: input.teamName || 'לא ידוע',
+        focus: input.focus,
         plays: result.plays,
         insights: result.insights,
         playCount: result.plays?.length || 0,
@@ -70,15 +85,68 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       console.warn('⚠️ Analysis save failed (continuing):', dbErr);
     }
 
-    console.log(`✅ Analysis complete — ${result.plays.length} plays`);
-    res.json(result);
-
+    console.log(`✅ Job ${jobId} complete — ${result.plays.length} plays`);
+    await Job.updateOne(
+      { jobId },
+      { $set: { status: 'done', progress: 100, progressMessage: 'הושלם', result, updatedAt: new Date() } },
+    );
   } catch (err: any) {
-    console.error('❌ שגיאה בניתוח:', err);
-    res.status(500).json({ error: err.message || 'שגיאה בניתוח' });
+    console.error(`❌ Job ${jobId} failed:`, err);
+    await Job.updateOne(
+      { jobId },
+      { $set: { status: 'failed', error: err?.message || 'שגיאה בניתוח', updatedAt: new Date() } },
+    ).catch((e) => console.warn(`⚠️ Job ${jobId} failure write failed:`, e));
   } finally {
-    if (filePath) {
-      try { fs.unlinkSync(filePath); } catch {}
+    if (input.filePath) {
+      try { fs.unlinkSync(input.filePath); } catch {}
+    }
+  }
+}
+
+// POST /api/analyze — creates a Job and returns { jobId } immediately (HTTP 202)
+router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const input: AnalyzeInput = {
+      youtubeUrl: req.body?.youtube_url,
+      geminiFileUri: req.body?.geminiFileUri,
+      context: req.body?.context || '',
+      focus: req.body?.focus || 'all',
+      teamName: req.body?.teamName || '',
+      jerseyColor: req.body?.jerseyColor || '',
+      opponentJerseyColor: req.body?.opponentJerseyColor || '',
+      filePath: req.file?.path,
+      fileOriginalName: req.file?.originalname,
+    };
+
+    if (!input.filePath && !input.geminiFileUri && !input.youtubeUrl) {
+      res.status(400).json({ error: 'נדרש קובץ וידאו או קישור YouTube' });
+      return;
+    }
+
+    const jobId = crypto.randomUUID();
+    const { filePath, fileOriginalName, ...inputForStorage } = input;
+    await Job.create({
+      jobId,
+      status: 'pending',
+      progress: 0,
+      progressMessage: 'ממתין...',
+      input: inputForStorage,
+    });
+
+    console.log(`📊 Created Job ${jobId} — focus: ${input.focus}, youtube: ${!!input.youtubeUrl}, file: ${!!input.filePath}`);
+
+    res.status(202).json({ jobId, status: 'pending' });
+
+    setImmediate(() => {
+      processJob(jobId, input).catch((e) => console.error(`❌ processJob ${jobId} threw:`, e));
+    });
+  } catch (err: any) {
+    console.error('❌ שגיאה ביצירת עבודה:', err);
+    if (req.file?.path) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ error: err?.message || 'שגיאה ביצירת עבודה' });
     }
   }
 });
