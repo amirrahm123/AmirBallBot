@@ -641,36 +641,66 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
     document.getElementById('upload-progress').classList.add('hidden');
 
-    // Timeout after 8 minutes
+    // Final safety net: 25 minutes. Polling itself is fast — this rarely triggers.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
 
-    // Rotating status messages
     const statusEl = document.querySelector('#analysis-processing p');
-    const statusMessages = [
-      { at: 0, text: isVideoFile ? 'מנתח עם Gemini...' : 'מוריד וידאו...' },
-      { at: 30000, text: 'מנתח עם Gemini...' },
-      { at: 60000, text: 'ממיר לעברית עם Claude...' },
-      { at: 90000, text: 'עוד רגע... ניתוח משחק מלא לוקח 3-5 דקות' },
-      { at: 180000, text: 'עדיין עובד... סרטונים ארוכים לוקחים יותר זמן' },
-      { at: 300000, text: 'כמעט סיימנו...' },
-    ];
-    const statusTimers = statusMessages.map(s => setTimeout(() => { statusEl.textContent = s.text; }, s.at));
+    statusEl.textContent = isVideoFile ? 'מכין ניתוח...' : 'מוריד וידאו...';
 
     try {
-      const res = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
-      const data = await res.json();
-      clearInterval(stepInterval);
-
-      if (data.error) {
-        // Show size warning for Google Drive download failures
-        if (data.error.includes('ENOMEM') || data.error.includes('memory') || data.error.includes('too large')) {
+      // Step 1: create job
+      const createRes = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
+      const createData = await createRes.json();
+      if (!createRes.ok || createData.error) {
+        const errMsg = createData.error || `HTTP ${createRes.status}`;
+        if (errMsg.includes('ENOMEM') || errMsg.includes('memory') || errMsg.includes('too large')) {
           throw new Error('הקובץ גדול מדי להורדה ישירה. אנא העלה את הקובץ ישירות מהמחשב שלך.');
         }
-        throw new Error(data.error);
+        throw new Error(errMsg);
       }
-      currentAnalysis = data;
-      renderAnalysis(data);
+      const jobId = createData.jobId;
+      if (!jobId) throw new Error('לא התקבל מזהה עבודה מהשרת');
+
+      // Step 2: poll every 5 seconds until done/failed
+      const POLL_MS = 5000;
+      const MAX_CONSECUTIVE_FAILS = 3;
+      let consecutiveFails = 0;
+      let finalJob = null;
+
+      while (true) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+        let job;
+        try {
+          const pollRes = await fetch(`${API}/api/job/${jobId}`, { signal: controller.signal });
+          if (!pollRes.ok) throw new Error(`HTTP ${pollRes.status}`);
+          job = await pollRes.json();
+          consecutiveFails = 0;
+        } catch (pollErr) {
+          if (pollErr.name === 'AbortError') throw pollErr;
+          consecutiveFails++;
+          console.warn(`Poll ${consecutiveFails}/${MAX_CONSECUTIVE_FAILS} failed:`, pollErr);
+          if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+            throw new Error('אין חיבור לשרת. אנא נסה שוב.');
+          }
+          continue;
+        }
+
+        const pct = typeof job.progress === 'number' ? Math.max(0, Math.min(100, job.progress)) : 0;
+        const msg = job.progressMessage || 'מעבד...';
+        statusEl.textContent = `${pct}% — ${msg}`;
+
+        if (job.status === 'done') { finalJob = job; break; }
+        if (job.status === 'failed') {
+          throw new Error(job.error || 'שגיאה בניתוח');
+        }
+      }
+
+      clearInterval(stepInterval);
+      currentAnalysis = finalJob.result;
+      renderAnalysis(finalJob.result);
     } catch (err) {
       clearInterval(stepInterval);
       document.getElementById('analysis-processing').classList.add('hidden');
@@ -679,7 +709,6 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
     } finally {
       clearTimeout(timeout);
-      statusTimers.forEach(t => clearTimeout(t));
     }
   } catch (outerErr) {
     console.error('Upload error:', outerErr);
