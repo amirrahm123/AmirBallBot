@@ -768,6 +768,82 @@ ${JSON.stringify(plays, null, 2)}`,
   return insights;
 }
 
+/** Parse "MM:SS" or "HH:MM:SS" into total seconds. Returns 0 on malformed input. */
+function timeToSeconds(t: string): number {
+  if (!t) return 0;
+  const parts = t.split(':').map(Number);
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+/**
+ * Drop duplicate plays that describe the same possession from two angles.
+ *
+ * Why this exists: the per-clip analyzer looks at an 18-second window around
+ * each Gemini-supplied timestamp. When Gemini emits two timestamps 1–2 seconds
+ * apart (ignoring its own "keep one within 15s" prompt rule), the two clip
+ * windows overlap almost entirely and the pipeline writes two plays for the
+ * same possession — one from the attacker's POV, one from the defender's.
+ * This is a code-level safety net for that failure mode.
+ *
+ * Rule: if two plays' time windows overlap by more than 50% of the shorter
+ * window, they are the same event. Keep the one with the richer label+note
+ * (more characters = analyst had more to say = better data). Drop the other.
+ */
+function dedupOverlappingPlays(plays: AnalysisResult['plays']): AnalysisResult['plays'] {
+  if (plays.length < 2) return plays;
+
+  // Sort by startTime so the inner loop can early-exit once a later play
+  // starts past the current play's end.
+  const sorted = [...plays].sort(
+    (a, b) => timeToSeconds(a.startTime) - timeToSeconds(b.startTime),
+  );
+
+  const dropped = new Set<number>();
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (dropped.has(i)) continue;
+    const aStart = timeToSeconds(sorted[i].startTime);
+    const aEnd = timeToSeconds(sorted[i].endTime);
+    const aDur = Math.max(1, aEnd - aStart); // floor at 1s to avoid /0
+
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (dropped.has(j)) continue;
+      const bStart = timeToSeconds(sorted[j].startTime);
+      const bEnd = timeToSeconds(sorted[j].endTime);
+      const bDur = Math.max(1, bEnd - bStart);
+
+      // Sorted by startTime → no overlap possible once bStart ≥ aEnd.
+      if (bStart >= aEnd) break;
+
+      const overlap = Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+      const overlapRatio = overlap / Math.min(aDur, bDur);
+
+      if (overlapRatio > 0.5) {
+        // Richer description wins. Tie → keep the earlier play (i) because
+        // the attacker's-POV entry usually comes first and reads more naturally.
+        const aRich = (sorted[i].label || '').length + (sorted[i].note || '').length;
+        const bRich = (sorted[j].label || '').length + (sorted[j].note || '').length;
+        const dropIdx = aRich >= bRich ? j : i;
+        const keepIdx = aRich >= bRich ? i : j;
+
+        console.log(
+          `🔀 Dedup: ${Math.round(overlapRatio * 100)}% overlap between ` +
+            `[${sorted[i].startTime}-${sorted[i].endTime}] "${sorted[i].label}" and ` +
+            `[${sorted[j].startTime}-${sorted[j].endTime}] "${sorted[j].label}" — ` +
+            `kept "${sorted[keepIdx].label}", dropped "${sorted[dropIdx].label}"`,
+        );
+        dropped.add(dropIdx);
+        if (dropIdx === i) break; // current i is gone, advance outer loop
+      }
+    }
+  }
+
+  return sorted.filter((_, idx) => !dropped.has(idx));
+}
+
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
 async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string, onProgress?: ProgressCb): Promise<AnalysisResult> {
   // Determine fileUri — upload if needed
@@ -808,7 +884,13 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
   // Step 3: Claude enriches with Hebrew coaching analysis
   console.log('🤖 [3/4] Claude enrichment...');
   onProgress?.(92, 'Claude מעבד הערות אימון...');
-  const enrichedPlays = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
+  const rawEnriched = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
+
+  // Safety net: Gemini sometimes emits two timestamps for the same possession.
+  const enrichedPlays = dedupOverlappingPlays(rawEnriched);
+  if (enrichedPlays.length < rawEnriched.length) {
+    console.log(`🧹 Dedup removed ${rawEnriched.length - enrichedPlays.length} overlapping plays`);
+  }
 
   // Step 4: Claude generates coaching insights
   onProgress?.(97, 'מייצר תובנות...');
