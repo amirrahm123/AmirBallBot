@@ -202,4 +202,37 @@ jobRouter.get('/:jobId', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/analyze/correction — coach marks a play correct or provides a fix.
+// Overwrites any prior correction for the same playIndex (latest wins).
+router.post('/correction', async (req: Request, res: Response) => {
+  try {
+    const { jobId, playIndex, correct, correction } = req.body;
+    if (!jobId || typeof playIndex !== 'number' || typeof correct !== 'boolean') {
+      res.status(400).json({ error: 'נדרש jobId, playIndex, correct' });
+      return;
+    }
+    const trimmedText = (correction || '').trim();
+    await Job.updateOne({ jobId }, { $pull: { corrections: { playIndex } } });
+    await Job.updateOne(
+      { jobId },
+      { $push: { corrections: { playIndex, correct, correction: trimmedText, createdAt: new Date() } } },
+    );
+    console.log(`💾 Saved correction: job=${jobId} play=${playIndex} text=${trimmedText.substring(0, 50)}`);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error(`❌ Failed to save correction: ${err?.message || err}`);
+    res.status(500).json({ error: err?.message || 'שגיאה בשמירת תיקון' });
+  }
+});
+
+// GET /api/analyze/corrections/:jobId — list saved corrections for one job.
+router.get('/corrections/:jobId', async (req: Request, res: Response) => {
+  try {
+    const job = await Job.findOne({ jobId: req.params.jobId });
+    res.json({ corrections: (job as any)?.corrections || [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'שגיאה בטעינת תיקונים' });
+  }
+});
+
 export default router;

@@ -476,6 +476,7 @@ textarea{resize:vertical;min-height:80px}
 // Railway backend URL — all API calls go here
 const API = 'https://amirballbot-production.up.railway.app';
 let currentAnalysis = null;
+let currentJobId = null;
 let selectedPlayerId = null;
 let currentVideoUrl = '';
 let ytPlayer = null;
@@ -699,6 +700,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       }
 
       clearInterval(stepInterval);
+      currentJobId = jobId;
       currentAnalysis = finalJob.result;
       renderAnalysis(finalJob.result);
     } catch (err) {
@@ -825,6 +827,19 @@ function renderAnalysis(data) {
     const typeLabel = p.type === 'Offense' || p.type === 'offense' ? 'התקפה' : p.type === 'Defense' || p.type === 'defense' ? 'הגנה' : 'מעבר';
     const timeDisplay = p.startTime && p.endTime ? `${p.startTime} - ${p.endTime}` : (p.time||'');
     const seekTime = parseTimeToSeconds(p.startTime || p.time);
+    // Coach correction buttons — only render for live jobs (currentJobId set
+    // during polling). Saved analyses load via /api/analyses, no jobId, so
+    // hide the row entirely instead of letting clicks silently 400.
+    const corrRow = currentJobId ? `
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;" onclick="event.stopPropagation()">
+        <button onclick="event.stopPropagation();markCorrect(currentJobId, ${i})" id="btn-correct-${i}" style="background:#0d1f0d;border:1px solid #22c55e;color:#22c55e;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✅ נכון</button>
+        <button onclick="event.stopPropagation();toggleCorrection(${i})" style="background:#0d0d1f;border:1px solid #6366f1;color:#6366f1;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✏️ תקן</button>
+        <span id="correction-status-${i}" style="font-size:11px;color:#666;"></span>
+      </div>
+      <div id="correction-box-${i}" style="display:none;margin-top:6px;" onclick="event.stopPropagation()">
+        <input type="text" id="correction-text-${i}" placeholder="מה באמת קרה? שורה אחת" onclick="event.stopPropagation()" style="width:100%;padding:6px 10px;background:#111;border:1px solid #333;border-radius:6px;color:#fff;font-size:13px;direction:rtl;box-sizing:border-box;" />
+        <button onclick="event.stopPropagation();saveCorrection(currentJobId, ${i})" style="margin-top:4px;background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;">שמור</button>
+      </div>` : '';
     return `<div class="play-item" id="play-card-${i}" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
       <div class="play-header">
         <span class="play-time" onclick="event.stopPropagation();seekVideo(${seekTime})" style="cursor:pointer" title="דלג לזמן זה">${timeDisplay}</span>
@@ -834,6 +849,7 @@ function renderAnalysis(data) {
         <span class="verify-icon" id="verify-icon-${i}" style="margin-right:auto;font-size:16px"></span>
       </div>
       <div class="play-note">${p.note||''}</div>
+      ${corrRow}
       <div class="verify-actual hidden" id="verify-actual-${i}" style="color:#E8621A;font-size:13px;padding:6px 0;border-top:1px solid var(--border)"></div>
       <div class="verify-buttons hidden" id="verify-buttons-${i}" style="display:flex;gap:8px;padding:6px 0" onclick="event.stopPropagation()">
         <button class="btn btn-sm" style="font-size:12px;padding:4px 12px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="coachOverride(${i},true)">✅ כן</button>
@@ -869,6 +885,43 @@ function renderAnalysis(data) {
 
   // Load roster if players found
   loadRoster();
+}
+
+// === Coach Corrections ===
+async function markCorrect(jobId, playIndex) {
+  try {
+    await fetch(API + '/api/analyze/correction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, playIndex, correct: true })
+    });
+    const btn = document.getElementById('btn-correct-' + playIndex);
+    if (btn) { btn.textContent = '✅ נכון ✓'; btn.style.background = '#14532d'; }
+    const status = document.getElementById('correction-status-' + playIndex);
+    if (status) status.textContent = 'נשמר';
+  } catch(e) { console.error(e); }
+}
+
+function toggleCorrection(playIndex) {
+  const box = document.getElementById('correction-box-' + playIndex);
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveCorrection(jobId, playIndex) {
+  const input = document.getElementById('correction-text-' + playIndex);
+  if (!input || !input.value.trim()) return;
+  try {
+    await fetch(API + '/api/analyze/correction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, playIndex, correct: false, correction: input.value.trim() })
+    });
+    const box = document.getElementById('correction-box-' + playIndex);
+    if (box) box.style.display = 'none';
+    const status = document.getElementById('correction-status-' + playIndex);
+    if (status) status.textContent = '✓ תיקון נשמר';
+    input.value = '';
+  } catch(e) { console.error(e); }
 }
 
 // === Chat ===
@@ -1196,6 +1249,7 @@ async function loadSavedAnalysis(id) {
     const res = await fetch(API + '/api/analyses/' + id);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    currentJobId = null;
     currentAnalysis = data;
     // Navigate to analysis screen
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));

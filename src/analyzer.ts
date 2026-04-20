@@ -3,8 +3,48 @@ import { execSync, execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { TeamKnowledge } from './database';
+import { TeamKnowledge, Job } from './database';
 import BASKETBALL_BRAIN from './knowledge/basketballBrain';
+
+/**
+ * Pull recent coach corrections from MongoDB and format them as a Hebrew
+ * prompt block. Used by enrichPlaysWithClaude as few-shot guidance — the
+ * coach's "this was actually X, not Y" feedback teaches the next analysis
+ * which terms to use.
+ *
+ * Filter rules: last 5 jobs that have any corrections, then per-correction
+ * keep only those with correct=false AND non-trivial text (>3 chars after
+ * trim). Cap at 20 bullets so the prompt stays bounded.
+ *
+ * Returns '' when nothing usable is found — caller concatenates blindly.
+ */
+async function loadRecentCorrections(): Promise<string> {
+  try {
+    const recentJobs = await Job.find(
+      { 'corrections.0': { $exists: true } },
+      { corrections: 1, createdAt: 1 },
+    ).sort({ createdAt: -1 }).limit(5);
+
+    const bullets: string[] = [];
+    for (const job of recentJobs) {
+      for (const c of job.corrections || []) {
+        if (!c.correct && c.correction && c.correction.trim().length > 3) {
+          bullets.push(`- ${c.correction.trim()}`);
+        }
+      }
+    }
+    if (bullets.length === 0) {
+      console.log('🆕 No past corrections found, running enrichment without feedback');
+      return '';
+    }
+    const last20 = bullets.slice(0, 20);
+    console.log(`📚 Injecting ${last20.length} past corrections from ${recentJobs.length} recent games into prompt`);
+    return `\n\nCOACH CORRECTIONS — real examples from this team's games. Study these carefully and apply the same patterns:\n${last20.join('\n')}\n\nWhen you see a similar situation, use these corrections to identify the play correctly.`;
+  } catch (err) {
+    console.warn('⚠️ Could not load corrections:', err);
+    return '';
+  }
+}
 
 async function getKnowledgeContext(): Promise<string> {
   try {
@@ -631,6 +671,7 @@ async function enrichPlaysWithClaude(
   console.log(`\n🤖 [2/3] Claude enrichment (${geminiPlays.length} plays)...`);
   const client = getClient();
   const knowledgeContext = await getKnowledgeContext();
+  const correctionsBlock = await loadRecentCorrections();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -713,6 +754,7 @@ COACHING KNOWLEDGE:
 ${BASKETBALL_BRAIN}
 
 ${knowledgeContext}
+${correctionsBlock}
 
 ═══ INPUTS ═══
 Roster: ${roster}
