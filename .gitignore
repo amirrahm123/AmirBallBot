@@ -3,3 +3,6 @@ dist/
 .env
 .vercel/
 bin/
+
+# Claude Code per-developer settings
+.claude/
