@@ -57,8 +57,21 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
-async function retryWithBackoff(fn: () => Promise<any>, retries = 4): Promise<any> {
-  for (let i = 0; i < retries; i++) {
+/**
+ * Retry a Gemini call on 503/529/overloaded responses.
+ *
+ * Backoff schedule (seconds): 5, 10, 20, 40, 80, 90, 90. Caps at 90s so a
+ * single clip's retry loop can't exceed ~6.7min wall time. Each wait is
+ * multiplied by a 0.8–1.2 jitter factor so parallel clip retries don't
+ * stampede the API after a shared outage.
+ *
+ * On terminal failure, logs a single line `❌ Gemini permanently failed…`
+ * keyed by `label` so lost plays are grep-countable in Railway logs.
+ */
+async function retryWithBackoff(fn: () => Promise<any>, label = 'Gemini'): Promise<any> {
+  const RETRIES = 7;
+  const DELAYS_SEC = [5, 10, 20, 40, 80, 90, 90];
+  for (let i = 0; i < RETRIES; i++) {
     try {
       return await fn();
     } catch (err: any) {
@@ -69,11 +82,16 @@ async function retryWithBackoff(fn: () => Promise<any>, retries = 4): Promise<an
         err?.message?.includes('high demand') ||
         err?.message?.includes('overloaded') ||
         err?.message?.includes('Overloaded');
-      if (is503 && i < retries - 1) {
-        const delay = Math.pow(2, i) * 5000;
-        console.log(`Gemini 503 — retry ${i + 1}/${retries} in ${delay / 1000}s...`);
+      if (is503 && i < RETRIES - 1) {
+        const base = DELAYS_SEC[i] * 1000;
+        const jitter = 0.8 + Math.random() * 0.4; // [0.8, 1.2)
+        const delay = Math.round(base * jitter);
+        console.log(`Gemini 503 — retry ${i + 1}/${RETRIES} in ${(delay / 1000).toFixed(1)}s...`);
         await new Promise(r => setTimeout(r, delay));
         continue;
+      }
+      if (is503) {
+        console.error(`❌ Gemini permanently failed after ${RETRIES} retries — ${label} lost`);
       }
       throw err;
     }
@@ -337,7 +355,7 @@ Rules:
         throw emptyErr;
       }
       return text;
-    });
+    }, 'timestamp detection');
 
     const rawText = rawResponse
       .replace(/```json/g, '')
@@ -580,7 +598,7 @@ async function analyzeClipAtTimestamp(
         throw emptyErr;
       }
       return res;
-    });
+    }, `clip at ${timestampStr}`);
 
     const rawText = (result.text || '')
       .replace(/```json/g, '')
