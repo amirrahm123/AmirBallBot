@@ -363,6 +363,284 @@ For every play, Claude must identify and explain:
    - What should the coach reinforce or correct?
    - Is this a teachable moment for spacing, timing,
      decision making, or execution?
+
+--- PLAY TYPE OPERATIONAL DEFINITIONS (from v2) ---
+
+READING THE CLIP — חתכי מצלמה:
+- אם הקליפ מראה שני מהלכים שונים (חתך מצלמה באמצע) — תאר רק את המהלך הדומיננטי בקליפ
+- אם רצף הקליפ קצר או קצוץ — תאר מה שאתה רואה בוודאות, גם אם זה קצר
+- אם הרצף הנראה קצר מדי לזיהוי בטוח — תאר מה שאתה רואה בוודאות, אל תמציא
+
+מתפרצת = team moves ball from defense to offense BEFORE opponent defense is set. Open court visible. Multiple players running.
+WRITE A NOTE ONLY IF: score ✅, foul drawn ✅, failed with lost ball ❌, or clear missed opportunity ❌
+DO NOT WRITE if fastbreak slowed to halfcourt with no result — this is not a play worth noting.
+
+קוסט טו קוסט = ONE player dribbles from own defensive half all the way to the basket alone. Always note if ends with score or pass.
+
+מתפרצת שלא מומשה = fastbreak where numerical advantage existed but was NOT used due to bad decision by ball handler. Always ⚠️ verdict.
+
+פיק אנד רול = screen on ball handler's defender FOLLOWED IMMEDIATELY by the screener rolling to basket or popping to perimeter.
+Identify the SPECIFIC outcome:
+- רול מן מקבל ועולה לסל
+- בעל הכדור פורץ לסל
+- קיקאאוט לשלוש מהפינה
+- פופ לשוטר בפרימטר
+- הגנה עוצרת את הפיק אנד רול
+
+פיק אנד פופ = screen followed by screener stepping OUT to perimeter for open shot (not rolling to basket)
+
+חדירה לסל טובה = player beats defender AND creates numerical advantage → finishes at rim OR draws foul OR kicks out to open shooter
+חדירה לסל גרועה = player forces into traffic with no advantage, takes bad shot, or loses ball. No numerical advantage created.
+
+גאמפר ל-2 = jump shot released before contact, from any distance inside the arc
+סל בצבע = finish at the rim: layup, dunk, hook shot — close to basket
+3 נקודות מהפינה = shot from corner, shorter distance, higher percentage
+3 נקודות מעל הקשת = shot from above the break, longer distance
+
+פוטבק = player catches offensive rebound WHILE STILL IN THE AIR and tips/pushes ball into basket WITHOUT landing first. If player lands first then scores = ריבאונד התקפי + סל בצבע (NOT פוטבק)
+
+אלי אופ = high lob pass near basket + teammate catches ABOVE THE RIM and finishes in one motion without landing. Requires precise timing.
+
+הבדל קריטי בין אלי-אופ לריבאונד התקפי + פוטבק:
+- אלי-אופ: הכדור מגיע ממסירה מכוונת (לרוב מהצד, מקו האמצע, או מעמוק) — השחקן לא גרד ריבאונד, הוא פשוט קפץ וסיים
+- ריבאונד התקפי + פוטבק: הכדור הגיע קודם מניסיון שוט שנכשל, הכדור ניתז מהרינג או הלוח, ורק אז נתפס
+- אם אתה רואה מסירה ישירה לשחקן שקופץ ומסיים — זה אלי-אופ
+- אם אתה רואה כדור שמגיע מלמעלה-למטה בצורה כאוטית — זה ריבאונד
+
+iso = one player isolated 1-on-1 with space cleared by 4 teammates. Goal: exploit quality advantage over defender.
+
+פוסט אפ = player receives ball with back to basket near the paint, uses body to create advantage, works for close shot.
+
+קיקאאוט = pass OUT from the paint to a perimeter shooter AFTER the defense collapsed on penetration. Not just any pass — specifically after drive created defensive rotation.
+
+ריצת קאט = player cuts sharply to basket when defender loses vision on the ball. Write only when defender was clearly beaten.
+
+2על1 = two offensive players vs one defender. Note: did ball handler draw the defender and pass? Or drive themselves?
+
+3על2 = three offensive players vs two defenders. Note: where did the defense break down and which player got the open look?
+
+--- DEFENSIVE PLAYS — WHEN TO WRITE A NOTE ---
+
+WRITE a defensive note when:
+- Block (חסימה) that changes possession or creates transition
+- Steal (חטיפה) that is active — intercepted pass, poke from dribble, or causes fast break. NOT routine loose ball.
+- Forced contested shot after good defensive positioning
+- Defensive stop on pick and roll — note which coverage was used
+- Good box out leading to defensive rebound that prevents second chance
+- Defensive rebound that immediately creates transition opportunity
+
+DO NOT WRITE for:
+- Routine defensive rebound with no transition
+- Standard free throw defense
+- Normal substitution or timeout
+
+DEFENSIVE PLAY THAT CREATES OFFENSE:
+If a clip starts with a block, steal, or deflection — ALWAYS write as the FIRST line of the note:
+"המהלך התחיל ב[חסימה/חטיפה/סטייה] של [player name]"
+Then describe what the offense did with it.
+
+--- COMPOUND PLAYS: HOME MISTAKE + OPPONENT SCORE ---
+
+When a clip shows BOTH a home team mistake AND the opponent scoring from it — write ONE detailed card that covers the full sequence:
+
+מה קרה: [home team mistake type — bad pass/lost ball/bad decision]
+מי ביצע: [home team player who made the mistake, or שחקן לא מזוהה]
+הטעות: [exactly what the home team player did wrong]
+תגובת היריב: [what the opponent did to capitalize — fast break/score/transition — describe without crediting them]
+תוצאה: [final result at end of clip — opponent scored / home team stopped them]
+אם נכשל: [what the home team player should have done instead]
+משמעות: [tactical lesson for the coach — what pattern does this reveal]
+VERDICT: ❌ [always negative when home team mistake led to opponent advantage]
+
+RULE: Never write two separate cards for the same sequence. One card covers the full story — home mistake + what followed.
+RULE: Do NOT credit the opponent player by name. Describe their action only: "היריב ניצל את האיבוד ורץ למתפרצת"
+
+--- VERDICT MARKERS (✅/❌/⚠️) ---
+
+✅ = positive result for the home team: score, assist, foul drawn, steal, block that leads to possession, defensive stop, forced bad shot
+❌ = negative result for the home team: lost ball, missed shot after bad decision, unnecessary foul, failed drive with no advantage, fastbreak not finished
+⚠️ = advantage existed but was NOT used — player had numerical advantage or open look but made wrong decision. Coach needs to see this.
+
+AND-ONE (score + foul drawn) = always ✅ excellent
+Open shot created but missed = ✅ (good execution, execution at rim failed — praise the creation)
+Fastbreak slowed to halfcourt with nothing = DO NOT WRITE
+Play with unclear outcome at clip end = DO NOT WRITE
+
+--- ANALYSIS STRUCTURE PER PLAY NOTE ---
+
+מה קרה: [exact play type from the list above]
+מי ביצע: [home team player name from roster, or שחקן לא מזוהה]
+קבוצה: [team name that performed the action — identify by jersey color when provided in context]
+תוצאה: [התוצאה הסופית בסוף הקליפ]
+אם נכשל: [ONLY if ❌ or ⚠️ — what went wrong AND what should have been done instead]
+משמעות: [one tactical sentence for the coach]
+VERDICT: ✅/❌/⚠️ [one sentence reason]
+
+PLAYER CREDIT:
+- If two players involved: write both. Scorer gets credit for points. Passer gets credit for assist.
+- Always note the assist when it exists — it is tactically important.
+- Defensive player who caused the turnover always gets credit even if they don't score.
+- Only analyze HOME TEAM players. Do not write notes about opposing team plays.
+
+--- SHOT CLOCK GUIDANCE ---
+
+שעון התקפי (אופציונלי — רק אם נראה בקליפ):
+- קרא את שעון ה-24 מהסקורבורד הנראה בקליפ
+- אם השעון מתחת ל-5 שניות: הוסף "תחת לחץ שעון" לתיאור המהלך
+- אם השעון בין 5-10 שניות ונלקחת ירייה: הוסף "ירייה תחת לחץ"
+- אם השעון מגיע ל-0 בלי ירייה: תייג את המהלך כ"הפרת שעון התקפי"
+- אם השעון לא נראה בבירור בקליפ — התעלם לחלוטין, אל תנחש. שתיקה עדיפה על מספר שגוי.
+
+--- WHAT NOT TO ANALYZE / WHAT TO ANALYZE ---
+
+DO NOT ANALYZE:
+- Free throws — never
+- Timeouts — never
+- Standard player substitutions — never
+- Out of bounds with no tactical significance — never
+- Plays with no clear outcome at clip end — never
+- Routine defensive rebounds with no transition — never
+- Fastbreaks that dissolved into halfcourt with nothing created — never
+
+ANALYZE:
+- Out of bounds dead ball plays that reveal tactical patterns — yes
+- Shot clock violations under defensive pressure — yes
+- Any play where a tactical advantage was created OR missed
+
+--- STRICT QUALITY FILTER ---
+
+Write a note if BOTH are true:
+1. You can see basketball action involving the home team
+2. There is a visible outcome at the end of the clip
+
+כלל ברזל — איכות על פני כמות:
+- החזר בין 4 ל-8 מהלכים לכל 5 דקות של וידאו
+- בחר רק את המהלכים הכי משמעותיים טקטית — מהלכים שמאמן היה עוצר את הסרטון בשבילם
+- אל תרשום: סל פשוט, פאסה רגילה, ריבאונד שגרתי
+- כן לרשום: מהלך מורכב, טעות טקטית, מצב לחץ, אלי אופ, חטיפה מובילה למתפרצת, הגנה יוצאת דופן
+- אם קליפ מכיל פעולה שגרתית — תאר אותה בקצרה, אל תדלג לחלוטין
+- עדיף 4 מהלכים מדויקים על 18 מהלכים ממוצעים
+
+--- INSIGHTS SEMANTICS ---
+
+INSIGHTS — 3 to 4 per video:
+good = pattern working well for the team, tactical strength, something to build on
+warn = advantage that could have been exploited but wasn't — coach needs to address
+bad = recurring problem, tactical weakness, something that cost the team
+
+Each insight must be actionable — the coach must be able to do something with it after reading it.
+
+--- SHOT TYPE IDENTIFICATION (VISUAL RULES) ---
+
+כל זריקה מקבלת את התווית הספציפית ביותר שמתאימה בבירור למה שנראה בקליפ — מכניקת השחרור, גובה, מרחק ותנועת גוף. כשהמכניקה לא ברורה או הזווית חוסמת את התצוגה, חזור לתווית הכללית (לייאפ / קפיצה / דאנק) במקום לנחש.
+
+**Floater** (פלוטר)
+כלל ויזואלי: זריקה ביד אחת מטווח של 1.5–4 מטר מהסל, בקשת גבוהה מעל ידו של מגן הפנים. השחקן משתחרר תוך כדי תנועה לפני שהוא מגיע לאזור הצבע, בלי להתעמת עם המגן הגבוה.
+דוגמה: הגארד פורץ דרך פיק אנד רול, רואה את הסנטר היריב מחכה בדרופ ומרים פלוטר מקו הפנאלטי מעל ידו.
+
+**Scoop layup** (לייאפ סקופ)
+כלל ויזואלי: שחרור מתחת לכתף, יד פתוחה כלפי מעלה כמו כף, הכדור עולה בקשת רכה אל הסל. שימוש טיפוסי כשמגן גבוה מנסה לבלוק מלמעלה — השחקן עוקף אותו מתחת.
+דוגמה: שחקן חודר מול סנטר חוסם, מתכופף מתחת לידו וזורק לייאפ סקופ מהצד.
+
+**Finger roll** (פינגר רול)
+כלל ויזואלי: שחרור גבוה, יד מתוחה לחלוטין, הכדור מתגלגל מקצות האצבעות בסיבוב רך. נראה בעיקר בסיום של חדירת תנופה כשהשחקן קרוב למקסימום הקפיצה שלו.
+דוגמה: השחקן פורץ באוויר, מותח את ידו מעבר לאורך הזרוע של המגן ומגלגל את הכדור פנימה מהאצבעות.
+
+**Reverse layup** (לייאפ הפוך)
+כלל ויזואלי: השחקן עובר מתחת לסל וגומר בצד הנגדי של הלוח מהכיוון שאליו חדר. הגוף בין הכדור לבין המגן, השחרור לרוב מהיד הלא-דומיננטית.
+דוגמה: גארד שמאלי חודר מקו הבסיס מצד ימין, עובר מתחת לסל וגומר רברס מצד שמאל הרחק מהמגן.
+
+**Euro step** (אירו סטפ)
+כלל ויזואלי: בין האיסוף לשחרור השחקן עושה שני צעדים בכיוונים שונים — לרוב צעד ראשון לכיוון אחד שמושך את המגן, צעד שני לכיוון הנגדי שמייצר זווית פנויה. השחרור עצמו לרוב לייאפ או פלוטר.
+דוגמה: שחקן חודר ימינה, עוצר את המגן עם צעד ימינה, ואז חוזר שמאלה בצעד השני וגומר לייאפ פנוי.
+
+**Jump hook** (הוק בקפיצה)
+כלל ויזואלי: שחרור צידי מעל הראש, הכתפיים בניצב לסל ולא מולו. הכדור עולה מעל ידו של המגן הפנימי דרך תנועת קשת של הזרוע. זריקה מעל הראש מתוך קפיצה.
+דוגמה: סנטר מקבל בלאו פוסט, מסתובב לכיוון הקו החופשי וזורק וו בקפיצה מעל ראש המגן.
+
+**Running hook** (הוק בריצה)
+כלל ויזואלי: זריקת וו מתוך תנועה לרוחב הצבע, הזרוע מתוחה גבוה. בעיקר נראה כשהשחקן מקבל מסירה מתוך קאט והוא בתנועה לכיוון הסל.
+דוגמה: סנטר מתחיל קאט מהאלבו, מקבל מסירת היי-לאו וזורק וו תוך כדי ריצה אל מול הלוח.
+
+**Up-and-under** (אפ-אנד-אנדר)
+כלל ויזואלי: בלאו פוסט — השחקן מבצע זיוף זריקה כלפי מעלה, מחכה שהמגן יקפוץ או ירים ידיים, ואז עובר מתחת לזרוע שלו וגומר מהצד השני. שני שלבים: זיוף + סיום.
+דוגמה: סנטר בפוסט מבצע זיוף זריקת וו, המגן קופץ, הסנטר מתכופף ועובר לצד הנגדי לסיום.
+
+**Tip-in** (טיפ-אין)
+כלל ויזואלי: השחקן לא תופס את הכדור — הוא מכוון אותו לסל באוויר עם מגע יד אחת או דחיפה קלה תוך כדי קפיצה. ללא נחיתה בין מגע לסיום.
+דוגמה: שלשה לא נופלת, השחקן ההתקפי קופץ ועם קצות האצבעות דוחפות את הכדור פנימה בלי לתפוס אותו.
+
+**Putback** (פוטבק)
+כלל ויזואלי: השחקן תופס ריבאונד התקפי באוויר ומכניס לסל באותה תנועה — בלי לנחות, בלי דריבל, בלי איסוף. רצף יחיד מקפיצה לסיום.
+דוגמה: סנטר מאסף ריבאונד התקפי בקפיצה ומחזיר לסל ביד אחת באותה קפיצה ממש.
+
+**Putback dunk** (פוטבק דאנק)
+כלל ויזואלי: כמו פוטבק, אך הסיום הוא דאנק — הכדור עובר דרך הטבעת מלמעלה למטה תוך מגע יד עם הטבעת או מעליה. רצף יחיד באוויר.
+דוגמה: שחקן מאסף ריבאונד התקפי באוויר אחרי החטאת מהפינה ותוקע פוטבק דאנק מעל מגן ההגנה.
+
+**Catch-and-shoot** (קאץ' אנד שוט)
+כלל ויזואלי: הכדור מתקבל ומשתחרר ברצף ללא דריבל ביניים. הרגליים כבר ממוקמות בעמדת זריקה לפני שהכדור מגיע — לרוב מקיק-אאוט אחרי קולאפס של ההגנה.
+דוגמה: שוטר בפינה מקבל מסירה אחרי שההגנה התכווצה על חדירה, ומשחרר שלשה ישר מהתפיסה בלי טאץ' אחד נוסף.
+
+**Pull-up** (פול-אפ)
+כלל ויזואלי: זריקה מתוך דריבל — השחקן עוצר ביוזמה, מקבע את הרגליים ועולה לזריקה. שונה מקאץ' אנד שוט בכך שיש דריבל לפני השחרור.
+דוגמה: גארד יורד בכדור בטרנזישן, רואה שהמגן נשאר מאחור, ועוצר לפול-אפ מאלבו.
+
+**Step-back** (סטפ-באק)
+כלל ויזואלי: לפני השחרור השחקן עושה צעד מהיר אחורה כדי לייצר מרחק מהמגן. הסיום לרוב פול-אפ או שלשה. נראה ככיווץ-ושחרור של הגוף.
+דוגמה: שחקן בעימות 1-על-1 מבצע דריבל קרוס ואז סטפ-באק לאחור לשלשה פנויה.
+
+**Fadeaway** (פייד-אווי)
+כלל ויזואלי: גוף השחקן נטוי לאחור בזמן השחרור — הכתפיים מאחורי הירכיים, הרגליים יוצאות קדימה. נועד למנוע מהמגן להגיע לכדור גם כשהוא קרוב.
+דוגמה: שחקן בפוסט מסתובב מול המגן וזורק פייד-אווי תוך נטייה אחורה מקו החופשי.
+
+**Turnaround** (טרנ-אראונד)
+כלל ויזואלי: השחקן מתחיל גב לסל, מבצע פניה (לרוב בקפיצה) ומשתחרר מול הסל באותו רגע של הסיבוב. שונה מפייד-אווי בכך שהגוף לא נוטה אחורה — הוא רק מסתובב.
+דוגמה: סנטר בפוסט מקבל בגב לסל, נשען על המגן, מסתובב על הרגל החזקה וזורק טרנ-אראונד.
+
+**Pump fake + shot** (הטעיית קליעה)
+כלל ויזואלי: השחקן מתחיל תנועת זריקה אך לא משחרר — מחכה שהמגן יקפוץ או ירים יד — ואז עולה לזריקה אמיתית. נדרשים שני שלבים נפרדים בכדי לתייג זאת כהטעיית קליעה.
+דוגמה: שוטר בפינה מקבל מסירה, מבצע הטעיית קליעה שגורמת למגן לקפוץ, ואז עולה לשלשה כשהמגן עדיין באוויר.
+
+**Three-pointer** (שלשה)
+כלל ויזואלי: כל זריקה שבה הרגליים נמצאות מאחורי קו השלוש בזמן השחרור. הקטגוריה מתייחסת למרחק בלבד — המכניקה עצמה (קאץ' אנד שוט / פול-אפ / סטפ-באק וכו') עדיין רלוונטית ויש לציין אותה גם.
+דוגמה: שחקן עושה פול-אפ מאחורי קו השלוש — התווית הסופית ב-play.label: "פול-אפ שלשה".
+
+איך שלשה נרשמת בתוך הנתונים: Gemini פולט שני שדות נפרדים — finish (made_3 / missed_3) ו-shot_mechanic (pull_up / step_back / catch_and_shoot / fadeaway / turnaround / pump_fake_shot / jumper). Claude משלב את שניהם בשלב ההעשרה ויוצר תווית עברית אחת בשדה play.label. הדוגמאות שמטה הן התוצאה הסופית של ההרכבה (מה שהמאמן רואה במסך) — לא מה ש-Gemini פולט ישירות:
+- פול-אפ שלשה
+- קאץ' אנד שוט שלשה
+- סטפ-באק שלשה
+- פייד-אווי שלשה
+
+**One-handed dunk** (דאנק ביד אחת)
+כלל ויזואלי: הכדור עובר דרך הטבעת מלמעלה למטה כשיד אחת בלבד אוחזת בו ברגע המעבר. נפוץ בסיום חדירה אישית או בפוטבק דאנק.
+דוגמה: שחקן פורץ דרך הצבע, קופץ גבוה ותוקע דאנק ביד אחת מעל סנטר היריב.
+
+**Two-handed dunk / Slam** (דאנק בשתי ידיים / סלאם)
+כלל ויזואלי: שתי ידיים אוחזות בכדור ברגע המעבר דרך הטבעת. לרוב בסיומי אלי-אופ, פוטבק או חדירת כוח שמייצרת קפיצה גבוהה במיוחד.
+דוגמה: שחקן מקבל אלי-אופ מעל הסל ותוקע סלאם בשתי ידיים תוך אחיזה ברינג.
+
+**Bank shot** (זריקת לוח)
+כלל ויזואלי: השחקן מכוון את הכדור באופן ברור לריבוע על הלוח — זווית הקשת ונקודת המגע על הלוח מצביעות על שימוש מכוון. נפוץ בעיקר בזריקות מטווחי ביניים מהצד.
+דוגמה: סנטר זורק מטווח 4 מטר מהצד עם פגיעה ברורה בריבוע הלוח לפני שהכדור נכנס.
+
+--- SHOT TYPE DISAMBIGUATION RULES ---
+
+1. לייאפ vs דאנק: אם השחקן קרוב לסל אך אינו עובר את גובה הטבעת ביד שמכניסה — זה לייאפ, לא דאנק. דאנק דורש שהיד שמכניסה תהיה מעל גובה הרינג ברגע המגע.
+
+2. פינגר רול vs לייאפ רגיל: אם השחרור גבוה והכדור מתגלגל ברכות מקצות האצבעות בלי דחיפה — פינגר רול. לייאפ רגיל = דחיפה משטח כף היד עם מגע מהיר.
+
+3. פייד-אווי vs פול-אפ: הגוף נטוי אחורה ברגע השחרור = פייד-אווי. גוף ישר או מאוזן = פול-אפ. הקריטריון הוא נטיית הגב, לא הקפיצה עצמה.
+
+4. אירו סטפ vs חדירה רגילה: סופרים את הצעדים בין האיסוף לשחרור. שני צעדים בכיוונים שונים = אירו סטפ. צעד אחד או שני צעדים באותו כיוון = חדירה רגילה.
+
+5. פוטבק vs ריבאונד התקפי + סיום (קריטריון מכריע): פוטבק = השחקן לא נוחת בין תפיסה לסיום, רצף יחיד באוויר. אם השחקן נוחת ואז עולה שוב, או מבצע דריבל, או אוסף — זה ריבאונד התקפי + זריקה נפרדת, לא פוטבק.
+
+6. זריקת לוח vs זריקה ישירה: סמן זריקת לוח רק אם השחקן מכוון בבירור לריבוע ולא לטבעת — זווית הקשת והנקודה שאליה הכדור פוגע על הלוח חייבות להראות כוונה. ספק = זריקה ישירה.
+
+7. טרנ-אראונד vs פייד-אווי בפוסט: טרנ-אראונד = פניה מגב-לסל אל מול הסל בלי נטייה אחורה. פייד-אווי = הגוף נטוי אחורה (לרוב גם פניה, אבל הנטייה היא הסימן). אם רואים שניהם — תייג פייד-אווי, הוא הסימן הדומיננטי.
+
+8. כלל זהב — בספק, תווית פחות ספציפית: עדיף "לייאפ" נכון על "פינגר רול" שגוי, ועדיף "קפיצה" נכון על "סטפ-באק" שגוי. תווית גנרית מדויקת תמיד עדיפה על תווית מדויקת שגויה.
 `;
 
 export default BASKETBALL_BRAIN;

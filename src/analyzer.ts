@@ -306,7 +306,8 @@ interface GeminiPlay {
   possession_origin?: string;
   setup?: string;
   action?: string;
-  finish?: string;
+  finish?: string;        // outcome only (made_2/3, missed_2/3, block, steal, etc.)
+  shot_mechanic?: string; // motion only (floater, pull_up, step_back, etc.); omit if no shot attempted
   finish_location?: string;
   perspective?: string;
 }
@@ -488,34 +489,51 @@ Defensive:
 - shot_clock_violation = defense forces shot clock to expire
 - foul_drawn = offensive player draws foul
 
-FINISH TYPES — pick the most precise:
-"dunk" = hands at/above rim, ball slammed. Must CLEARLY see this or use "layup".
-"putback_dunk" = offensive rebound finished with dunk.
-"layup" = continuous drive to rim, no jump stop.
-"reverse_layup" = layup on opposite side of basket from approach direction.
-"euro_step_layup" = two-step gather changing direction before finishing at rim.
-"finger_roll" = soft one-finger release at rim.
-"pull_up_mid" = stops off dribble, shoots 2-pointer. Includes spin moves ending in jumper. Even if close to basket — if player stopped and jumped = pull_up_mid not layup.
-"runner" = running one-hand shot released in stride past the paint at higher velocity.
-"floater" = one-handed high arc shot released at edge of paint, deliberate high arc.
-"hook_shot" = sweeping one-arm shot, body fully sideways to basket.
-"catch_and_shoot" = player catches pass and shoots immediately without dribbling.
-"made_3" = 3-point shot goes in.
-"missed_3" = 3-point shot misses. Step-back 3-pointers miss more often than they go in — do NOT assume a step-back shot was made. Only write made_3 if you clearly see the ball pass through the net from the standard broadcast angle.
-"made_2" = catch-and-shoot mid-range that scores, or shot type unclear but 2-pointer scores.
-"missed_2" = catch-and-shoot mid-range misses, or shot type unclear but 2-pointer misses.
-"tip_in" = offensive rebound tapped in softly.
+FINISH TYPES — describe the OUTCOME of the possession (was a shot made, missed, blocked, etc.). Use ONE value. The shooting MOTION goes in the separate shot_mechanic field below — do NOT put motion words like "fadeaway" or "pull_up" here.
+"made_2" = 2-point shot scored (any motion).
+"made_3" = 3-point shot scored (any motion). Only write made_3 if you clearly see the ball pass through the net.
+"missed_2" = 2-point shot missed (any motion).
+"missed_3" = 3-point shot missed (any motion). Step-back 3-pointers miss more often than they go in — do NOT assume a step-back shot was made.
 "and_one" = basket scored while being fouled.
-"block" = shot deflected by defender.
-"steal" = ball taken by defender.
-"charge_taken" = offensive foul called.
-"foul_drawn" = foul called, no basket.
-"out_of_bounds" = ball out before finish. Note in setup: did offense step out (turnover) or defense knock it out (defensive play).
-"shot_clock_violation" = clock expires.
-"unknown_finish" = camera cut or unclear.
+"block" = our shot was blocked by defender.
+"steal" = defender took the ball before/instead of a shot completing.
+"charge_taken" = defender drew an offensive foul.
+"foul_drawn" = offensive player drew a defensive foul, no shot completed.
+"out_of_bounds" = ball went out before resolution. Note in setup: did offense step out (turnover) or defense knock it out (defensive play).
+"shot_clock_violation" = clock expired with no shot.
+"unknown_finish" = camera cut or unclear outcome.
 
 WHEN IN DOUBT → "unknown_finish"
 NEVER assume basket scored unless you CLEARLY see ball go through hoop.
+
+SHOT TYPE IDENTIFICATION — emit one of these values in the shot_mechanic field. Pick the most specific value that clearly fits the visible motion. If ambiguous, fall back to a generic (layup / jumper / dunk). The shot_mechanic field is INDEPENDENT of the finish field — a missed step-back three is finish: missed_3, shot_mechanic: step_back. Both are recorded.
+- floater: high-arc one-hander, 5-12 ft, released before reaching rim
+- scoop_layup: low underhand release, usually avoiding shot blocker
+- finger_roll: high one-hander rolling softly off fingertips
+- reverse_layup: finishes on opposite side of backboard from drive
+- euro_step: two lateral steps between gather and release
+- jump_hook: post hook shot from a jump, release over the head
+- running_hook: hook shot while moving laterally
+- up_and_under: pump fake in post, score from below the defender
+- tip_in: mid-air deflection into rim, no catch
+- putback: catch + immediate score, no dribble reset
+- putback_dunk: offensive rebound dunked in one motion
+- catch_and_shoot: jumper with no dribble between catch and release
+- pull_up: jumper off the dribble, feet set before release
+- step_back: backward step creates space before jumper
+- fadeaway: body leans back during release
+- turnaround: back-to-basket pivot into jumper
+- pump_fake_shot: shot fake makes defender commit, then real shot follows
+- one_hand_dunk: ball through rim from above, one hand
+- two_hand_dunk: ball through rim from above, two hands
+- bank_shot: explicit use of backboard square for a direct (non-layup) shot
+- layup: generic layup when the specific motion isn't clear (fallback)
+- jumper: generic jumper when the specific motion isn't clear (fallback)
+- dunk: generic dunk when one-hand vs two-hand isn't visible (fallback)
+
+OMIT shot_mechanic entirely when no shot was attempted (steal, foul_drawn, out_of_bounds, shot_clock_violation, charge_taken).
+
+Three-pointers: there is no compound shot_mechanic value — keep finish: made_3 or missed_3, and put the motion (pull_up, step_back, catch_and_shoot, fadeaway, turnaround, pump_fake_shot, or jumper) in shot_mechanic. The Hebrew translator combines them into 'סטפ-באק שלשה'-style labels downstream.
 
 POSSESSION ORIGINS:
 "steal" = defender clearly intercepts ball.
@@ -545,12 +563,12 @@ Received above free throw line = isolation type, EVEN IF they spin or drive into
 EXCEPTION: if ball was received AS RESULT of a screen action = use pick_and_roll play type regardless of location.
 drive_and_kick finish = belongs to the SHOOTER.
 
-RULE 3 — FINISH ACCURACY:
-Only "layup" if continuous momentum, no stop.
-Only "dunk" if you CLEARLY see hands above rim.
-Player stops and jumps near basket = "pull_up_mid".
-When unsure = "unknown_finish".
-NEVER assume a shot was made unless you clearly see the ball pass through the net. If the shot misses, write missed_3 or missed_2. After a missed shot — check: did anyone get the offensive rebound and score? If yes, that is a SEPARATE play entry with playType offensive_rebound_putback.
+RULE 3 — FINISH AND MECHANIC ACCURACY:
+shot_mechanic: "layup" only if continuous momentum, no stop.
+shot_mechanic: "one_hand_dunk" or "two_hand_dunk" only if you CLEARLY see hands above rim. Use generic "dunk" if you can't tell which hand.
+Player stops and jumps to shoot (any distance) = shot_mechanic: "pull_up", finish: whichever outcome occurred (made_2 / missed_2 / made_3 / missed_3 / block).
+When motion is unclear = shot_mechanic: "layup" or "jumper" (generic). When outcome is unclear = finish: "unknown_finish".
+NEVER assume a shot was made unless you clearly see the ball pass through the net. If the shot misses, write finish: missed_3 or missed_2 (shot_mechanic still describes the motion that missed). After a missed shot — check: did anyone get the offensive rebound and score? If yes, that is a SEPARATE play entry with playType offensive_rebound_putback (shot_mechanic: putback or putback_dunk).
 
 RULE — SECOND CHANCE: After every missed shot, watch what happens next in the clip. If a player gets the offensive rebound and scores immediately, that is a SEPARATE play entry with playType offensive_rebound_putback. Write it as a second object in the JSON array. Never stop at the miss if the possession continues in the same clip.
 
@@ -579,7 +597,10 @@ Return ONLY valid JSON array with exactly ONE play, no markdown:
   "possession_origin": "live_ball | steal | deflection | defensive_rebound | offensive_rebound | inbound | after_timeout | after_foul | press_break | unknown",
   "setup": "1-2 sentences, jersey numbers only",
   "action": "one sentence, jersey numbers only",
-  "finish": "dunk | putback_dunk | layup | reverse_layup | euro_step_layup | finger_roll | pull_up_mid | runner | floater | hook_shot | catch_and_shoot | made_3 | missed_3 | made_2 | missed_2 | tip_in | and_one | block | steal | charge_taken | foul_drawn | out_of_bounds | shot_clock_violation | unknown_finish",
+  // "finish" describes the OUTCOME of the possession. Use ONE value. unknown_finish only if camera cut or occluded view.
+  "finish": "made_2 | made_3 | missed_2 | missed_3 | and_one | block | steal | charge_taken | foul_drawn | out_of_bounds | shot_clock_violation | unknown_finish",
+  // "shot_mechanic" describes the shooting MOTION (independent of made/missed). OMIT this field entirely if no shot was attempted.
+  "shot_mechanic": "floater | scoop_layup | finger_roll | reverse_layup | euro_step | jump_hook | running_hook | up_and_under | tip_in | putback | putback_dunk | catch_and_shoot | pull_up | step_back | fadeaway | turnaround | pump_fake_shot | one_hand_dunk | two_hand_dunk | bank_shot | layup | jumper | dunk",
   "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
   "players": ["#11", "#2"],
   "type": "offense | defense | transition",
@@ -728,18 +749,68 @@ LANGUAGE RULES:
 - דרייב (not חדירה)
 - פיק אנד רול (acceptable alongside מסך ומסירה)
 
-SHOT TYPE ACCURACY:
-- finish "fadeaway" or "isolation_fadeaway" = write פייד-אווי
-- finish "floater" = write פלואטר or טיפה
-- finish "hook_shot" = write הוק שוט
-- finish "pull_up_mid" = write זריקת עצירה or פול-אפ — never call it לייאפ
-- finish "runner" = write ראנר
-- finish "euro_step_layup" = write יורו סטפ
-- finish "reverse_layup" = write לייאפ הפוך
-- finish "finger_roll" = write פינגר רול
-- finish "dunk" or "putback_dunk" = write דאנק
-- finish "catch_and_shoot" = write קאץ' אנד שוט
-- finish "unknown_finish" = do not mention the finish type — describe the action instead
+SHOT MECHANIC + OUTCOME → HEBREW LABEL:
+The label combines two fields: "finish" (outcome) and "shot_mechanic" (motion). If shot_mechanic is missing, fall back to a generic phrase per outcome. Always end with "של <player>".
+
+Mechanic → Hebrew root term:
+- floater → פלוטר
+- scoop_layup → לייאפ סקופ
+- finger_roll → פינגר רול
+- reverse_layup → לייאפ הפוך
+- euro_step → אירו סטפ
+- jump_hook → הוק בקפיצה
+- running_hook → הוק בריצה
+- up_and_under → אפ-אנד-אנדר
+- tip_in → טיפ-אין
+- putback → פוטבק
+- putback_dunk → פוטבק דאנק
+- catch_and_shoot → קאץ' אנד שוט
+- pull_up → פול-אפ
+- step_back → סטפ-באק
+- fadeaway → פייד-אווי
+- turnaround → טרנ-אראונד
+- pump_fake_shot → הטעיית קליעה
+- one_hand_dunk → דאנק ביד אחת
+- two_hand_dunk → סלאם
+- bank_shot → זריקת לוח
+- layup (generic) → לייאפ
+- jumper (generic) → קפיצה
+- dunk (generic) → דאנק
+
+MADE SHOTS (finish: made_2 or made_3):
+- made_2 + any specific mechanic → "<mechanic Hebrew> של <player>" (e.g. פלוטר של דורט, פייד-אווי של שיי, דאנק ביד אחת של שיי)
+- made_2 + jumper (generic) → "סל של <player>"
+- made_2 + mechanic missing → "סל של <player>"
+- made_3 + step_back → "סטפ-באק שלשה של <player>"
+- made_3 + pull_up → "פול-אפ שלשה של <player>"
+- made_3 + fadeaway → "פייד-אווי שלשה של <player>"
+- made_3 + catch_and_shoot → "קאץ' אנד שוט שלשה של <player>"
+- made_3 + turnaround → "טרנ-אראונד שלשה של <player>"
+- made_3 + pump_fake_shot → "שלשה אחרי הטעיית קליעה של <player>"
+- made_3 + jumper (generic) or missing → "שלשה של <player>"
+
+MISSED SHOTS (finish: missed_2 or missed_3):
+Same composition as made, then append " — החטיא".
+- missed_2 + pull_up → "פול-אפ של <player> — החטיא"
+- missed_3 + step_back → "סטפ-באק שלשה של <player> — החטיא"
+- missed + mechanic missing → "<2-נקודות or שלשה> של <player> — החטיא"
+
+AND-ONE (finish: and_one):
+- and_one + any specific mechanic → "<mechanic Hebrew> ועבירה של <player>" (e.g. דאנק ועבירה של דורט)
+- and_one + mechanic missing → "אנד-וואן של <player>"
+
+BLOCKED (finish: block):
+- block + any mechanic → "<mechanic Hebrew> של <player> נחסם" (e.g. פלוטר של דורט נחסם, דאנק ביד אחת של שיי נחסם)
+- block + mechanic missing → "זריקה של <player> נחסמה"
+
+OTHER OUTCOMES (no shot completed — shot_mechanic typically absent):
+- steal → "סטיל על <player>" (we lost the ball; perspective: defensive_failure)
+- charge_taken → "פאול התקפי של <player>"
+- foul_drawn → "<player> סחב פאול"
+- out_of_bounds → "כדור החוצה — <player>"
+- shot_clock_violation → "הפרת שעון התקפי"
+- unknown_finish + mechanic present → mechanic alone, no outcome word (e.g. "סטפ-באק של שיי")
+- unknown_finish + mechanic missing → describe the action via setup/note instead, do not invent an outcome
 
 NOTE STRUCTURE — follow this order:
 1. How did possession start? (from possession_origin)
