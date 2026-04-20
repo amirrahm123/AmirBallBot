@@ -844,6 +844,83 @@ function dedupOverlappingPlays(plays: AnalysisResult['plays']): AnalysisResult['
   return sorted.filter((_, idx) => !dropped.has(idx));
 }
 
+/**
+ * Extract a single frame from a local video at a given offset (seconds).
+ * Used by jersey color detection — one cheap frame per video, not per clip.
+ * Returns the tmp jpg path on success, or null on any ffmpeg failure.
+ */
+function extractSingleFrame(videoPath: string, atSeconds = 8): string | null {
+  try {
+    const tmpFrame = path.join(os.tmpdir(), `ballbot-jersey-${Date.now()}.jpg`);
+    execFileSync(FFMPEG, [
+      '-ss', String(atSeconds),
+      '-i', videoPath,
+      '-frames:v', '1',
+      '-q:v', '2',
+      tmpFrame,
+      '-y',
+    ], { stdio: 'pipe', timeout: 15000 });
+    return fs.existsSync(tmpFrame) ? tmpFrame : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask Claude Haiku to identify each team's primary jersey color from one frame.
+ * Returns null on any failure (missing frame, API error, unparseable JSON,
+ * or "unclear" verdict from the model). Callers continue without color
+ * context when null is returned — this is a best-effort enrichment, not
+ * a blocker for the analysis pipeline.
+ */
+async function findJerseyColors(
+  framePath: string,
+  teamName?: string,
+  opponentName?: string,
+): Promise<{ teamA: { name?: string; color: string }; teamB: { name?: string; color: string } } | null> {
+  try {
+    if (!fs.existsSync(framePath)) return null;
+    const frameData = fs.readFileSync(framePath).toString('base64');
+    const client = getClient();
+    const home = teamName || 'home team';
+    const away = opponentName || 'opponent';
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image' as const,
+            source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: frameData },
+          },
+          {
+            type: 'text' as const,
+            text: `Two teams are playing: ${home} and ${away}. Look at the players on court and identify the PRIMARY jersey color of each team. Return color names in Hebrew (e.g. כחול, לבן, אדום, שחור, צהוב, ירוק). Return JSON only with no other text: {"teamA":{"name":"${home}","color":"<hebrew color>"},"teamB":{"name":"${away}","color":"<hebrew color>"}}. If jersey colors are not clearly visible, return {"error":"unclear"}.`,
+          },
+        ],
+      }],
+    });
+    const text = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map(b => b.text)
+      .join('');
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    if (parsed.error) return null;
+    if (parsed.teamA?.color && parsed.teamB?.color) {
+      return {
+        teamA: { name: parsed.teamA.name, color: parsed.teamA.color },
+        teamB: { name: parsed.teamB.name, color: parsed.teamB.color },
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
 async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string, onProgress?: ProgressCb): Promise<AnalysisResult> {
   // Determine fileUri — upload if needed
@@ -858,6 +935,28 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 
   if (!fileUri) {
     throw new Error('No video file URI available for analysis');
+  }
+
+  // Jersey color auto-detect via Claude Haiku. Fills in blanks only — if the
+  // user typed the colors in the form we trust them. Requires a local video
+  // file (skipped on the direct-to-Gemini upload path, which is fine: the
+  // clip prompt falls back to "unknown" as it always did).
+  if (videoPath && (!jerseyColor || !opponentJerseyColor)) {
+    onProgress?.(15, 'מזהה צבעי קבוצות...');
+    const framePath = extractSingleFrame(videoPath, 8);
+    const detected = framePath ? await findJerseyColors(framePath, teamName, undefined) : null;
+    if (framePath) { try { fs.unlinkSync(framePath); } catch {} }
+    if (detected) {
+      if (!jerseyColor && detected.teamA.color) jerseyColor = detected.teamA.color;
+      if (!opponentJerseyColor && detected.teamB.color) opponentJerseyColor = detected.teamB.color;
+      console.log(`🎨 Jersey colors: detected by AI — teamA=${jerseyColor || '?'}, teamB=${opponentJerseyColor || '?'}`);
+    } else {
+      console.log('⚠️ Jersey detection failed, continuing without team colors');
+    }
+  } else if (videoPath) {
+    console.log(`🎨 Jersey colors: using user-provided values (${jerseyColor} / ${opponentJerseyColor})`);
+  } else {
+    console.log('⚠️ Jersey detection skipped: no local videoPath (Gemini-direct-upload path)');
   }
 
   // Pass 1: detect timestamps
