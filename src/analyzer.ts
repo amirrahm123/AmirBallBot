@@ -308,6 +308,7 @@ interface GeminiPlay {
   action?: string;
   finish?: string;        // outcome only (made_2/3, missed_2/3, block, steal, etc.)
   shot_mechanic?: string; // motion only (floater, pull_up, step_back, etc.); omit if no shot attempted
+  off_ball_action?: string; // optional, orthogonal to finish/shot_mechanic/playType — describes the off-ball cut or screen that freed the receiver (back_cut, pin_down, curl, fade_action, etc.); omit unless a cut or off-ball screen clearly created the scoring opportunity
   finish_location?: string;
   perspective?: string;
 }
@@ -563,6 +564,23 @@ OMIT shot_mechanic entirely when no shot was attempted (steal, foul_drawn, out_o
 
 Three-pointers: there is no compound shot_mechanic value — keep finish: made_3 or missed_3, and put the motion (pull_up, step_back, catch_and_shoot, fadeaway, turnaround, pump_fake_shot, or jumper) in shot_mechanic. The Hebrew translator combines them into 'סטפ-באק שלשה'-style labels downstream.
 
+OFF-BALL ACTION IDENTIFICATION — emit one of these values in the off_ball_action field when a CUT or off-ball SCREEN clearly created the scoring opportunity (i.e. the receiver got free because of the action, not because of a pick-and-roll, isolation, post-up, or transition). This field is INDEPENDENT of playType, finish, and shot_mechanic — it describes HOW THE RECEIVER GOT FREE before the shot, not the shot itself.
+- back_cut: cutter moves behind an overplaying defender toward the basket to receive
+- face_cut: cutter moves in front of defender (between defender and ball) toward basket
+- flex_cut: baseline cut from corner to opposite block around a screen
+- ucla_cut: passer cuts around a high-post screen toward the basket after passing to the elbow
+- v_cut: receiver jabs one direction then changes direction sharply to receive
+- l_cut: receiver moves vertically along the lane then cuts sharply outward to perimeter
+- pin_down: down-screen set high while receiver rises from low to perimeter through the screen
+- flare_screen: screen set behind the receiver's defender, receiver fades sideways-and-out to perimeter
+- curl: receiver runs tightly around a screen and continues into the paint toward the rim
+- fade_action: receiver detaches sideways away from a screen to open perimeter space (DISTINCT from fadeaway shot — fade_action describes movement BEFORE the shot, fadeaway describes the shot motion itself; the same player can do both in sequence: fade_action → fadeaway)
+- zipper: receiver cuts straight up the lane from baseline through a high screen toward the top
+
+OMIT off_ball_action entirely unless the cut or off-ball screen CLEARLY created the scoring opportunity. Skip for plain pick-and-roll, isolation, post-up, transition, or putbacks. When unclear, omit.
+
+Fade disambiguation: fade_action (off-ball movement before the shot) vs fadeaway (shot mechanic — body leaning back at release). These are different fields and can co-occur. fade_action goes in off_ball_action; fadeaway goes in shot_mechanic.
+
 POSSESSION ORIGINS:
 "steal" = defender clearly intercepts ball.
 "deflection" = ball bounces off player accidentally into another's hands.
@@ -643,6 +661,8 @@ Return ONLY valid JSON array with exactly ONE play, no markdown:
   "finish": "made_2 | made_3 | missed_2 | missed_3 | and_one | block | steal | charge_taken | foul_drawn | out_of_bounds | shot_clock_violation | unknown_finish",
   // "shot_mechanic" describes the shooting MOTION (independent of made/missed). OMIT this field entirely if no shot was attempted.
   "shot_mechanic": "floater | scoop_layup | finger_roll | reverse_layup | euro_step | jump_hook | running_hook | up_and_under | tip_in | putback | putback_dunk | catch_and_shoot | pull_up | step_back | fadeaway | turnaround | pump_fake_shot | one_hand_dunk | two_hand_dunk | bank_shot | layup | jumper | dunk",
+  // "off_ball_action" describes how the receiver got free — emit ONLY when a cut or off-ball screen created the scoring opportunity (skip for isolation, pick-and-roll, post-up, or transition). OMIT this field entirely when no off-ball action created the shot.
+  "off_ball_action": "back_cut | face_cut | flex_cut | ucla_cut | v_cut | l_cut | pin_down | flare_screen | curl | fade_action | zipper",
   "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
   "players": ["#11", "#2"],
   "type": "offense | defense | transition",
@@ -753,7 +773,9 @@ You will receive plays detected by a video analyst. Each play has:
 - possession_origin: how possession was gained
 - setup: what happened before the finish
 - action: the decisive moment
-- finish: how it ended
+- finish: how it ended (outcome)
+- shot_mechanic: shooting motion (independent of outcome; may be absent)
+- off_ball_action: off-ball cut or screen that freed the receiver (may be absent; orthogonal to playType/shot_mechanic)
 - finish_location: where on court
 - players: jersey numbers involved
 - perspective: offense | defense | defensive_failure
@@ -858,6 +880,49 @@ OTHER OUTCOMES (no shot completed — shot_mechanic typically absent):
 - shot_clock_violation → "הפרת שעון התקפי"
 - unknown_finish + mechanic present → mechanic alone, no outcome word (e.g. "סטפ-באק של שיי")
 - unknown_finish + mechanic missing → describe the action via setup/note instead, do not invent an outcome
+
+OFF-BALL ACTION → HEBREW LABEL PREPEND:
+When off_ball_action is present, PREPEND the Hebrew off-ball phrase to the existing outcome label. off_ball_action is orthogonal to finish and shot_mechanic — compose all three.
+
+off_ball_action → Hebrew root term:
+- back_cut → חיתוך אחורי
+- face_cut → חיתוך קדמי
+- flex_cut → חיתוך פלקס
+- ucla_cut → חיתוך UCLA
+- v_cut → חיתוך V
+- l_cut → חיתוך L
+- pin_down → פין-דאון
+- flare_screen → פלייר
+- curl → קרל
+- fade_action → ניתוק מסקרין
+- zipper → זיפר
+
+Composition patterns (when off_ball_action is present AND a shot resulted):
+- back_cut + made_2 + layup → "חיתוך אחורי ללייאפ של <player>"
+- back_cut + made_2 + mechanic missing → "חיתוך אחורי לסל של <player>"
+- pin_down + made_3 + catch_and_shoot → "פין-דאון לקאץ' אנד שוט שלשה של <player>"
+- pin_down + made_3 + mechanic missing → "פין-דאון לשלשה של <player>"
+- ucla_cut + made_2 + layup → "חיתוך UCLA ללייאפ של <player>"
+- curl + made_2 + floater → "קרל לפלוטר של <player>"
+- fade_action + made_3 + catch_and_shoot → "ניתוק מסקרין לשלשה של <player>"
+- flare_screen + made_3 + catch_and_shoot → "פלייר לשלשה של <player>"
+- zipper + made_3 → "זיפר לשלשה של <player>"
+- v_cut + made_3 + catch_and_shoot → "חיתוך V לשלשה של <player>"
+- l_cut + made_3 + catch_and_shoot → "חיתוך L לשלשה של <player>"
+- flex_cut + made_2 + layup → "חיתוך פלקס ללייאפ של <player>"
+- face_cut + made_2 + layup → "חיתוך קדמי ללייאפ של <player>"
+
+When off_ball_action is present BUT shot missed/blocked:
+- missed → "<off-ball Hebrew> של <player> — החטיא" (e.g. "פין-דאון של בלייקני — החטיא", "חיתוך אחורי של מוטלי — החטיא")
+- block → "<off-ball Hebrew> של <player> — נחסם" (e.g. "קרל של בלייקני — נחסם")
+
+When off_ball_action is present BUT no shot resulted (the action created advantage without a direct shot — e.g. drew a foul, forced a switch that led to a pass-out):
+- foul_drawn → "<off-ball Hebrew> של <player> — סחב פאול"
+- otherwise describe the advantage in the note field; keep label concise — "<off-ball Hebrew> של <player>"
+
+When off_ball_action is ABSENT: existing label composition logic above is unchanged.
+
+Fade disambiguation reminder: fade_action (off_ball_action) → "ניתוק מסקרין". fadeaway (shot_mechanic) → "פייד-אווי". Both can appear on the same play; compose both ("ניתוק מסקרין לפייד-אווי שלשה של <player>").
 
 NOTE STRUCTURE — follow this order:
 1. How did possession start? (from possession_origin)
