@@ -348,7 +348,8 @@ async function detectPlayTimestamps(
   fileUri: string,
   mimeType: string,
   jerseyColor: string,
-  opponentJerseyColor: string
+  opponentJerseyColor: string,
+  teamName: string,
 ): Promise<string[]> {
   const { GoogleGenAI } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -369,8 +370,35 @@ Rules:
 - Maximum 25 timestamps.
 - If two events are within 15 seconds of each other, keep only one.
 - The analyzing team wears ${jerseyColor}. Opponent wears ${opponentJerseyColor}.
-- Focus on plays involving the analyzing team.
-- IMPORTANT: Only include timestamps where the shot clock is visible on screen. If the shot clock is not visible (replay, celebration, timeout, close-up) — skip that moment.`;
+- IMPORTANT: Only include timestamps where the shot clock is visible on screen. If the shot clock is not visible (celebration, timeout, close-up) — skip that moment.
+
+FOCUS TEAM RELEVANCE:
+Focus team name: ${teamName || 'the analyzing team'}
+Focus team jersey color: ${jerseyColor || 'unknown'}
+
+Only emit a timestamp when the focus team is a MEANINGFUL actor in the play:
+  INCLUDE if the focus team:
+    • scores or attempts to score
+    • is scored on (their defensive moment)
+    • makes a defensive play (steal, block, charge drawn, contested-stop)
+    • makes a mistake (turnover, bad pass, offensive foul)
+    • gets a rebound (offensive or defensive)
+  SKIP if:
+    • the play is pure opponent-vs-opponent action with the focus team not involved
+    • opponent isolation scoring with no visible focus-team defensive error
+    • administrative moments (timeouts, opponent free-throw routines)
+
+If the focus team is even partially involved (helping on defense, recovering, contesting), INCLUDE the play.
+When unsure whether the focus team is involved, INCLUDE the play. A false include is easier to fix via coach corrections than a missed play.
+
+REPLAY DETECTION — skip the timestamp ONLY IF you see one or more of these explicit visual clues:
+  • Slow-motion playback (frame rate visibly reduced, motion is unnaturally smooth)
+  • Game clock is frozen or not advancing during the moment
+  • "REPLAY" text overlay anywhere on the broadcast
+  • Unusual broadcast angle (skycam, baseline close-up, player-follow camera) combined with slow-motion
+
+DO NOT skip a timestamp just because the play "looks similar" to a previous one — only skip with the explicit clues above.
+When uncertain, INCLUDE the timestamp. Missing a real play is worse than emitting one extra timestamp that turns out to be a replay (the per-clip analyzer has its own replay check downstream).`;
 
   try {
     const rawResponse = await retryWithBackoff(async () => {
@@ -582,6 +610,20 @@ Cut during play = play ends there.
 Never combine two possessions.
 A deflection off a missed shot that causes the ball to go out of bounds is NOT a defensive play. Write it as: perspective: offense, finish: out_of_bounds, possession_origin: deflection.
 
+RULE — REPLAY (BROADCAST REPLAY DETECTION):
+If this 18-second clip is a broadcast replay rather than live game action, return EXACTLY this JSON instead of a normal play object:
+[{"skip": true, "reason": "replay"}]
+
+Trigger replay-skip ONLY when explicit clues are present:
+  • Slow-motion playback throughout the clip
+  • Game clock frozen or not advancing
+  • "REPLAY" text overlay visible
+  • Unusual broadcast angle (skycam / baseline close-up / player-follow) WITH slow-motion
+
+DO NOT skip based on "looks similar to previous clip" alone.
+DO NOT skip based on a single slow-motion frame at the end of an otherwise live clip.
+When uncertain, return the normal play object. Missing a real play is worse than including a replay.
+
 RULE 6 — SETUP AND ACTION FIELDS:
 setup = 1-2 sentences. For chain plays (pick and roll → defensive collapse → open cutter), describe ALL phases: what the first action was, how the defense reacted, what space was created. Jersey numbers only. No names.
 action = ONE sentence only. The decisive moment.
@@ -670,8 +712,13 @@ async function analyzeClipAtTimestamp(
       console.log(`   ⚠️ Clip ${timestampStr}: no JSON found`);
       return null;
     }
-    const plays: GeminiPlay[] = JSON.parse(jsonMatch[0]);
-    const play = plays[0] || null;
+    const parsed: any[] = JSON.parse(jsonMatch[0]);
+    const first = parsed[0];
+    if (first?.skip === true) {
+      console.log(`   ⏭️ Skipped clip at ${timestampStr} — ${first.reason || 'replay'} detected`);
+      return null;
+    }
+    const play: GeminiPlay | null = first || null;
     if (play) {
       console.log(`   🏀 Clip ${timestampStr}: ${play.playType} → ${play.finish}`);
     }
@@ -1092,8 +1139,11 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 
   // Pass 1: detect timestamps
   console.log('🔍 [1/4] Detecting play timestamps...');
+  if (teamName) {
+    console.log(`🎯 Focus team filter: analyzing plays relevant to ${teamName}`);
+  }
   onProgress?.(20, 'מזהה רגעי משחק...');
-  const timestamps = await detectPlayTimestamps(fileUri, mimeType, jerseyColor || '', opponentJerseyColor || '');
+  const timestamps = await detectPlayTimestamps(fileUri, mimeType, jerseyColor || '', opponentJerseyColor || '', teamName || '');
   console.log(`⏱️ Found ${timestamps.length} timestamps`);
   onProgress?.(30, `נמצאו ${timestamps.length} מהלכים`);
 
