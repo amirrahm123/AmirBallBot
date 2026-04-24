@@ -778,6 +778,35 @@ async function analyzeClipAtTimestamp(
     const play: GeminiPlay | null = first || null;
     if (play) {
       console.log(`   🏀 Clip ${timestampStr}: ${play.playType} → ${play.finish}`);
+
+      // 🎽 Team ID — per-clip log (reads only fields that actually exist: perspective + players)
+      const perspective = play.perspective || 'missing';
+      const playersArr = Array.isArray(play.players) && play.players.length > 0
+        ? `[${play.players.join(',')}]`
+        : 'empty';
+      const jerseyCtx = `{our=${jerseyColor || 'unknown'}, opp=${opponentJerseyColor || 'unknown'}}`;
+      console.log(`🎽 Team ID: clip ${timestampStr} → Gemini perspective=${perspective} players=${playersArr} playType=${play.playType || '—'} finish=${play.finish || '—'} jersey_ctx=${jerseyCtx}`);
+
+      // ⚠️ Ambiguity — fires on any attribution signal that couldn't resolve cleanly
+      const ambiguityReasons: string[] = [];
+      if (!jerseyColor || !opponentJerseyColor) ambiguityReasons.push('jersey_context_missing');
+      if (!play.perspective) ambiguityReasons.push('perspective_missing');
+      if (!Array.isArray(play.players) || play.players.length === 0) {
+        ambiguityReasons.push('players_empty');
+      } else {
+        const rosterJerseys = new Set((roster.match(/#\d+/g) || []).map((s) => s));
+        if (rosterJerseys.size > 0) {
+          for (const p of play.players) {
+            const tag = typeof p === 'string' ? p.trim() : '';
+            if (tag && !rosterJerseys.has(tag)) {
+              ambiguityReasons.push(`players_not_in_roster:${tag}`);
+            }
+          }
+        }
+      }
+      if (ambiguityReasons.length > 0) {
+        console.log(`⚠️ Team ID ambiguous: clip ${timestampStr} → reason=${ambiguityReasons.join('|')}`);
+      }
     }
     return play;
   } catch (err) {
@@ -812,12 +841,32 @@ async function enrichPlaysWithClaude(
     : stripBrainSections(BASKETBALL_BRAIN, IQ_BRAIN_SECTION_HEADERS);
   console.log(`🧪 Brain sections stripped for A/B: ${strippedSections.join(', ') || 'none'}`);
 
+  // 🎽 Team ID — batch tallies computed while we scan plays for IQ eligibility
+  const perspectiveCounts: Record<string, number> = {
+    offense: 0, transition: 0, defense: 0, defensive_failure: 0, missing: 0,
+  };
+  const rosterJerseySet = new Set((roster.match(/#\d+/g) || []).map((s) => s));
+  let teamIdAmbiguousCount = 0;
+
   // 🧠 IQ Layer 1 — pre-enrichment eligibility log (mirrors the skip rules in the prompt)
   const IQ_NON_SHOT_FINISHES = new Set([
     'steal', 'foul_drawn', 'charge_taken', 'out_of_bounds', 'shot_clock_violation', 'unknown_finish',
   ]);
   let iqEligibleCount = 0;
   for (const p of geminiPlays) {
+    // Tally perspective bucket for the batch summary
+    const persp = p.perspective || 'missing';
+    if (persp in perspectiveCounts) perspectiveCounts[persp]++;
+    else perspectiveCounts[persp] = 1;
+    // Tally ambiguity (same predicate as in analyzeClipAtTimestamp)
+    const playerList = Array.isArray(p.players) ? p.players : [];
+    const hasRosterMiss = rosterJerseySet.size > 0 && playerList.some(
+      (j) => typeof j === 'string' && j.trim() && !rosterJerseySet.has(j.trim()),
+    );
+    if (!p.perspective || playerList.length === 0 || hasRosterMiss) {
+      teamIdAmbiguousCount++;
+    }
+
     const playerTag = (p.players && p.players[0]) || '—';
     let reason: string;
     if (p.perspective === 'defensive_failure') {
@@ -1081,6 +1130,7 @@ ${JSON.stringify(geminiPlays, null, 2)}`,
   console.log(`   ✅ Enriched ${enriched.length} plays`);
 
   // 🧠 IQ Layer 1 — post-enrichment marker detection (parses ⚠️/❌ from the returned label)
+  // 🎽 Team ID — post-enrichment final attribution log (combined loop with IQ verdict)
   let iqMarkedCount = 0;
   for (const p of enriched) {
     const label: string = (p && typeof p.label === 'string') ? p.label : '';
@@ -1100,11 +1150,24 @@ ${JSON.stringify(geminiPlays, null, 2)}`,
       marker = 'none';
     }
     console.log(`🧠 IQ Layer 1 verdict: ${p?.startTime || '—'} ${playerTag} verdict=${verdict} marker=${marker}`);
+
+    // 🎽 Final team attribution — perspective + resolved label (contains Hebrew player name if matched)
+    const finalPerspective = (p && typeof p.perspective === 'string' && p.perspective) || 'missing';
+    const finalPlayersArr = (p && Array.isArray(p.players) && p.players.length > 0)
+      ? `[${p.players.join(',')}]`
+      : 'empty';
+    console.log(`🎽 Final team: clip ${p?.startTime || '—'} → perspective=${finalPerspective} players=${finalPlayersArr} label="${label}"`);
   }
 
   // 🧠 IQ Layer 1 — batch summary (expected band: 10-20% of eligible shots marked)
   const iqMarkedPct = iqEligibleCount > 0 ? Math.round((iqMarkedCount / iqEligibleCount) * 100) : 0;
   console.log(`🧠 IQ Layer 1: eligible=${iqEligibleCount} marked=${iqMarkedCount} (${iqMarkedPct}%)`);
+
+  // 🎽 Team ID — batch summary (perspective bucket counts tallied in the pre-enrichment loop)
+  const perspSummary = Object.entries(perspectiveCounts)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(', ');
+  console.log(`🎽 Team ID summary: total=${geminiPlays.length} perspective_counts={${perspSummary}} ambiguous=${teamIdAmbiguousCount}`);
 
   return enriched;
 }
