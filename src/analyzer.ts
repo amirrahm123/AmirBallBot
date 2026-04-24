@@ -348,6 +348,13 @@ interface GeminiPlay {
   off_ball_action?: string; // optional, orthogonal to finish/shot_mechanic/playType — describes the off-ball cut or screen that freed the receiver (back_cut, pin_down, curl, fade_action, etc.); omit unless a cut or off-ball screen clearly created the scoring opportunity
   finish_location?: string;
   perspective?: string;
+  // Per-field confidence from the CONFIDENCE PROTOCOL. Low → corresponding field coerced to an "unclear" value by Gemini.
+  playType_confidence?: 'high' | 'medium' | 'low';
+  perspective_confidence?: 'high' | 'medium' | 'low';
+  players_confidence?: 'high' | 'medium' | 'low';
+  shot_mechanic_confidence?: 'high' | 'medium' | 'low';
+  // One Hebrew sentence describing literally what was visible in the frames, before interpretation. Grounding anchor.
+  what_i_actually_saw?: string;
 }
 
 /** Helper: upload video to Gemini Files API and return fileUri */
@@ -504,17 +511,72 @@ This clip was extracted around timestamp ${timestampStr} in the full game.
 There is ONE play in this clip. Identify and describe ONLY that play.
 Return a JSON array with exactly ONE play object.
 
-═══ CRITICAL EPISTEMIC RULES — READ FIRST ═══
+═══ CONFIDENCE PROTOCOL ═══
 
-1. DESCRIBE ONLY WHAT YOU LITERALLY SEE in these frames. Do not infer plausible basketball based on context, shot patterns, or what "usually happens." If frames show a player at the rim and the next frame shows the ball going in, do NOT invent the move between — describe only the visible mechanic.
+For every clip you analyze, you MUST first answer this question internally:
+"What did I literally see in the frames, separate from what I expect to see in basketball?"
 
-2. JERSEY COLOR CHECK before perspective assignment. State to yourself which jersey color the ball-handler is wearing. If the color clearly matches the analyzing team's color (${jerseyColor || 'unknown'}), perspective=offense. If clearly opponent color (${opponentJerseyColor || 'unknown'}), perspective=defensive_failure if they scored or skip if they didn't. If the color is NOT clearly identifiable (lighting, motion blur, similar tones, partial view), set perspective=unclear and add note: "jersey color not clearly visible".
+Then for each field below, assign a confidence level using these EXACT criteria:
 
-3. PLAY TYPE — only commit to a specific play type (alley_oop, post_up_finish, coast_to_coast, etc.) if you can clearly see the entire mechanic. If you see the finish but not the setup, return playType=unclear_finish_only. If you see motion but cannot identify the specific mechanic, return playType=unclear_action.
+PERSPECTIVE confidence:
+- HIGH: I clearly saw the ball-handler's full jersey color match either ${jerseyColor || 'analyzing team color'} or ${opponentJerseyColor || 'opponent color'} in at least 2 frames
+- MEDIUM: I saw a partial jersey or the color was somewhat visible but not perfectly clear
+- LOW: I could not clearly see the jersey color due to motion blur, distance, lighting, or partial view
 
-4. PLAYER NUMBERS — only include a jersey number in the players array if you can clearly read it on the jersey in at least one frame. Do not infer player identity from team context, position, or play role. If you cannot read the number, omit the player from the array.
+If perspective_confidence is LOW, set perspective="unclear".
 
-5. UNCLEAR IS A CORRECT ANSWER. The downstream system handles unclear cases gracefully. A guessed answer pollutes the analysis; an unclear answer is honest data. Bias strongly toward unclear when not certain.
+PLAY TYPE confidence:
+- HIGH: I clearly saw the ENTIRE play from setup through finish (e.g., I saw the screen, the drive, the kick-out, AND the shot)
+- MEDIUM: I saw the finish clearly but missed the setup, OR vice versa
+- LOW: I saw only fragments, cannot identify the specific mechanic
+
+If playType_confidence is LOW, set playType="unclear_action". If MEDIUM and you only saw the finish, set playType="unclear_finish_only".
+
+PLAYERS confidence:
+- HIGH: I clearly read the jersey number(s) in at least one frame
+- MEDIUM: I think I saw a number but it was partially visible or could be confused with another
+- LOW: I could not read any jersey number clearly
+
+If players_confidence is LOW, set players=[].
+
+SHOT MECHANIC confidence (for shooting plays):
+- HIGH: I clearly saw the player's shooting motion (jump shot vs floater vs layup vs dunk vs fadeaway)
+- MEDIUM: I saw a release but couldn't tell the exact mechanic
+- LOW: I didn't see the shooting motion at all
+
+═══ EXAMPLES OF CORRECT UNCERTAINTY ═══
+
+GOOD example 1 — partial view:
+{
+  "playType": "unclear_finish_only",
+  "playType_confidence": "medium",
+  "perspective": "offense",
+  "perspective_confidence": "high",
+  "what_i_actually_saw": "שחקן בחולצה כחולה מקבל את הכדור בקרבת הסל ומבצע סיום, אבל לא ראיתי איך הגיע לשם"
+}
+
+GOOD example 2 — color unclear:
+{
+  "playType": "isolation_drive",
+  "playType_confidence": "high",
+  "perspective": "unclear",
+  "perspective_confidence": "low",
+  "what_i_actually_saw": "שחקן עם הכדור חודר לסל וקולע, אבל החולצה שלו כהה ולא הצלחתי להבחין אם כחול או שחור-צהוב"
+}
+
+BAD example — overconfident inference:
+{
+  "playType": "post_up_finish",
+  "playType_confidence": "high",
+  "what_i_actually_saw": "שחקן ליד הסל קולע"
+}
+This is BAD because the player being near the rim doesn't prove it was a post-up. Without seeing the back-down, this should be unclear_finish_only.
+
+═══ REMEMBER ═══
+
+Marking confidence as HIGH when you didn't actually see clearly is the WORST possible answer. It creates errors that look correct.
+Marking confidence as LOW when uncertain is the BEST possible answer. It creates honest data.
+The downstream system handles low-confidence and unclear values gracefully. Confident wrong answers cause cascading errors.
 
 ═══ GAME CONTEXT ═══
 Team being analyzed: ${teamName || 'unknown'}
@@ -703,6 +765,8 @@ Return ONLY valid JSON array with exactly ONE play, no markdown:
   "startTime": "${timestampStr}",
   "endTime": "...",
   "playType": "pick_and_roll_finish | pick_and_roll_kickout_3 | pick_and_pop | dribble_handoff | isolation_drive | isolation_fadeaway | post_up_finish | post_up_pass_out | high_low | drive_and_kick | backdoor_cut | skip_pass_corner_3 | elevator_screen | inbound_play | alley_oop_set | transition_steal_dunk | transition_leak_out | fast_break_2on1 | fast_break_3on2 | secondary_break | coast_to_coast | offensive_rebound_putback | offensive_rebound_tip_in | defensive_stop | defensive_block | charge_taken | shot_clock_violation | foul_drawn | unclear_finish_only | unclear_action",
+  // "playType_confidence" — per CONFIDENCE PROTOCOL above. REQUIRED.
+  "playType_confidence": "high | medium | low",
   "possession_origin": "live_ball | steal | deflection | defensive_rebound | offensive_rebound | inbound | after_timeout | after_foul | press_break | unknown",
   "setup": "1-2 sentences, jersey numbers only",
   "action": "one sentence, jersey numbers only",
@@ -710,12 +774,20 @@ Return ONLY valid JSON array with exactly ONE play, no markdown:
   "finish": "made_2 | made_3 | missed_2 | missed_3 | and_one | block | steal | charge_taken | foul_drawn | out_of_bounds | shot_clock_violation | unknown_finish",
   // "shot_mechanic" describes the shooting MOTION (independent of made/missed). OMIT this field entirely if no shot was attempted.
   "shot_mechanic": "floater | scoop_layup | finger_roll | reverse_layup | euro_step | jump_hook | running_hook | up_and_under | tip_in | putback | putback_dunk | catch_and_shoot | pull_up | step_back | fadeaway | turnaround | pump_fake_shot | one_hand_dunk | two_hand_dunk | bank_shot | layup | jumper | dunk",
+  // "shot_mechanic_confidence" — per CONFIDENCE PROTOCOL above. Include when shot_mechanic is present; OMIT when shot_mechanic is omitted.
+  "shot_mechanic_confidence": "high | medium | low",
   // "off_ball_action" describes how the receiver got free — emit ONLY when a cut or off-ball screen created the scoring opportunity (skip for isolation, pick-and-roll, post-up, or transition). OMIT this field entirely when no off-ball action created the shot.
   "off_ball_action": "back_cut | face_cut | flex_cut | ucla_cut | v_cut | l_cut | pin_down | flare_screen | curl | fade_action | zipper",
   "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
   "players": ["#11", "#2"],
+  // "players_confidence" — per CONFIDENCE PROTOCOL above. REQUIRED.
+  "players_confidence": "high | medium | low",
   "type": "offense | defense | transition",
   "perspective": "offense | defense | defensive_failure | unclear",
+  // "perspective_confidence" — per CONFIDENCE PROTOCOL above. REQUIRED.
+  "perspective_confidence": "high | medium | low",
+  // "what_i_actually_saw" — REQUIRED. ONE Hebrew sentence describing literally what is visible in the frames, BEFORE interpretation. This is your grounding check — if you cannot write this concretely, you are inferring rather than seeing.
+  "what_i_actually_saw": "משפט אחד בעברית של מה שראית בפועל בפריימים",
   "description": "one sentence in English, jersey numbers only"
 }]`;
 }
@@ -791,13 +863,17 @@ async function analyzeClipAtTimestamp(
     if (play) {
       console.log(`   🏀 Clip ${timestampStr}: ${play.playType} → ${play.finish}`);
 
-      // 🎽 Team ID — per-clip log (reads only fields that actually exist: perspective + players)
+      // 🎽 Team ID — per-clip log (now includes per-field confidence + what_i_actually_saw)
       const perspective = play.perspective || 'missing';
       const playersArr = Array.isArray(play.players) && play.players.length > 0
         ? `[${play.players.join(',')}]`
         : 'empty';
-      const jerseyCtx = `{our=${jerseyColor || 'unknown'}, opp=${opponentJerseyColor || 'unknown'}}`;
-      console.log(`🎽 Team ID: clip ${timestampStr} → Gemini perspective=${perspective} players=${playersArr} playType=${play.playType || '—'} finish=${play.finish || '—'} jersey_ctx=${jerseyCtx}`);
+      const perspConf = play.perspective_confidence || 'missing';
+      const ptConf = play.playType_confidence || 'missing';
+      const playersConf = play.players_confidence || 'missing';
+      const sawRaw = typeof play.what_i_actually_saw === 'string' ? play.what_i_actually_saw : '';
+      const sawTrunc = sawRaw.length > 100 ? sawRaw.slice(0, 97) + '...' : sawRaw;
+      console.log(`🎽 Team ID: clip ${timestampStr} → Gemini perspective=${perspective} (confidence=${perspConf}) playType=${play.playType || '—'} (confidence=${ptConf}) players=${playersArr} (confidence=${playersConf}) saw="${sawTrunc}"`);
 
       // ⚠️ Ambiguity — fires on any attribution signal that couldn't resolve cleanly
       const ambiguityReasons: string[] = [];
@@ -860,6 +936,14 @@ async function enrichPlaysWithClaude(
   const rosterJerseySet = new Set((roster.match(/#\d+/g) || []).map((s) => s));
   let teamIdAmbiguousCount = 0;
 
+  // 🎽 Confidence tallies — emitted separately as a confidence summary log
+  const mkConfTally = () => ({ high: 0, medium: 0, low: 0, missing: 0 } as Record<string, number>);
+  const confCounts = {
+    perspective: mkConfTally(),
+    playType: mkConfTally(),
+    players: mkConfTally(),
+  };
+
   // 🧠 IQ Layer 1 — pre-enrichment eligibility log (mirrors the skip rules in the prompt)
   const IQ_NON_SHOT_FINISHES = new Set([
     'steal', 'foul_drawn', 'charge_taken', 'out_of_bounds', 'shot_clock_violation', 'unknown_finish',
@@ -878,6 +962,11 @@ async function enrichPlaysWithClaude(
     if (!p.perspective || playerList.length === 0 || hasRosterMiss) {
       teamIdAmbiguousCount++;
     }
+    // Tally confidence buckets
+    const bucket = (v: unknown) => (v === 'high' || v === 'medium' || v === 'low') ? v : 'missing';
+    confCounts.perspective[bucket(p.perspective_confidence)]++;
+    confCounts.playType[bucket(p.playType_confidence)]++;
+    confCounts.players[bucket(p.players_confidence)]++;
 
     const playerTag = (p.players && p.players[0]) || '—';
     let reason: string;
@@ -1180,6 +1269,11 @@ ${JSON.stringify(geminiPlays, null, 2)}`,
     .map(([k, v]) => `${k}=${v}`)
     .join(', ');
   console.log(`🎽 Team ID summary: total=${geminiPlays.length} perspective_counts={${perspSummary}} ambiguous=${teamIdAmbiguousCount}`);
+
+  // 🎽 Confidence summary — per-field high/medium/low/missing tallies
+  const fmtConf = (t: Record<string, number>) =>
+    `{high=${t.high}, medium=${t.medium}, low=${t.low}${t.missing ? `, missing=${t.missing}` : ''}}`;
+  console.log(`🎽 Confidence summary: perspective=${fmtConf(confCounts.perspective)}, playType=${fmtConf(confCounts.playType)}, players=${fmtConf(confCounts.players)}`);
 
   return enriched;
 }
