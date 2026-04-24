@@ -757,6 +757,26 @@ async function enrichPlaysWithClaude(
   focus: string
 ): Promise<AnalysisResult['plays']> {
   console.log(`\n🤖 [2/3] Claude enrichment (${geminiPlays.length} plays)...`);
+
+  // 🧠 IQ Layer 1 — pre-enrichment eligibility log (mirrors the skip rules in the prompt)
+  const IQ_NON_SHOT_FINISHES = new Set([
+    'steal', 'foul_drawn', 'charge_taken', 'out_of_bounds', 'shot_clock_violation', 'unknown_finish',
+  ]);
+  let iqEligibleCount = 0;
+  for (const p of geminiPlays) {
+    const playerTag = (p.players && p.players[0]) || '—';
+    let reason: string;
+    if (p.perspective === 'defensive_failure') {
+      reason = 'defensive_failure';
+    } else if (!p.finish || IQ_NON_SHOT_FINISHES.has(p.finish)) {
+      reason = `non_shot_finish (${p.finish || 'missing'})`;
+    } else {
+      reason = 'eligible';
+      iqEligibleCount++;
+    }
+    console.log(`🧠 IQ Layer 1 eligibility: ${p.startTime} ${playerTag} playType=${p.playType} finish=${p.finish || '—'} → ${reason}`);
+  }
+
   const client = getClient();
   const knowledgeContext = await getKnowledgeContext();
   const correctionsBlock = await loadRecentCorrections();
@@ -1003,6 +1023,33 @@ ${JSON.stringify(geminiPlays, null, 2)}`,
 
   const enriched = JSON.parse(jsonMatch[0]);
   console.log(`   ✅ Enriched ${enriched.length} plays`);
+
+  // 🧠 IQ Layer 1 — post-enrichment marker detection (parses ⚠️/❌ from the returned label)
+  let iqMarkedCount = 0;
+  for (const p of enriched) {
+    const label: string = (p && typeof p.label === 'string') ? p.label : '';
+    const playerTag = (p && Array.isArray(p.players) && p.players[0]) || '—';
+    let verdict: 'warn' | 'bad' | 'none';
+    let marker: string;
+    if (label.includes('❌')) {
+      verdict = 'bad';
+      marker = '❌';
+      iqMarkedCount++;
+    } else if (label.includes('⚠️')) {
+      verdict = 'warn';
+      marker = '⚠️';
+      iqMarkedCount++;
+    } else {
+      verdict = 'none';
+      marker = 'none';
+    }
+    console.log(`🧠 IQ Layer 1 verdict: ${p?.startTime || '—'} ${playerTag} verdict=${verdict} marker=${marker}`);
+  }
+
+  // 🧠 IQ Layer 1 — batch summary (expected band: 10-20% of eligible shots marked)
+  const iqMarkedPct = iqEligibleCount > 0 ? Math.round((iqMarkedCount / iqEligibleCount) * 100) : 0;
+  console.log(`🧠 IQ Layer 1: eligible=${iqEligibleCount} marked=${iqMarkedCount} (${iqMarkedPct}%)`);
+
   return enriched;
 }
 
