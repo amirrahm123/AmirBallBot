@@ -758,6 +758,13 @@ async function enrichPlaysWithClaude(
 ): Promise<AnalysisResult['plays']> {
   console.log(`\n🤖 [2/3] Claude enrichment (${geminiPlays.length} plays)...`);
 
+  // 🧪 A/B toggle for the Layer 1 IQ rubric directive. Default = enabled.
+  // Set IQ_LAYER_1_ENABLED=false in Railway env to disable the injection.
+  // NOTE: this only gates the directive block in this prompt; the BASKETBALL_BRAIN
+  // blob still includes the Layer 1 principles as background knowledge.
+  const IQ_LAYER_1_ENABLED = process.env.IQ_LAYER_1_ENABLED !== 'false';
+  console.log(`🧪 IQ Layer 1 injection: ${IQ_LAYER_1_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+
   // 🧠 IQ Layer 1 — pre-enrichment eligibility log (mirrors the skip rules in the prompt)
   const IQ_NON_SHOT_FINISHES = new Set([
     'steal', 'foul_drawn', 'charge_taken', 'out_of_bounds', 'shot_clock_violation', 'unknown_finish',
@@ -780,6 +787,46 @@ async function enrichPlaysWithClaude(
   const client = getClient();
   const knowledgeContext = await getKnowledgeContext();
   const correctionsBlock = await loadRecentCorrections();
+
+  const iqLayer1Block = IQ_LAYER_1_ENABLED ? `
+═══ SHOT QUALITY EVALUATION (IQ LAYER 1) ═══
+
+After composing the label via the rules above, apply the "BASKETBALL IQ — LAYER 1: SHOT QUALITY PRINCIPLES" section from the Brain (below). This is a JUDGMENT overlay that appends a verdict marker (⚠️ or ❌) to the END of the already-composed label for problematic or bad shot selection. Good and neutral shots stay unmarked — there is no ✅ marker.
+
+APPLICABILITY — IQ Layer 1 evaluates OFFENSIVE shot choice ONLY. Skip the 4-factor evaluation and do NOT apply any verdict marker when ANY of these are true:
+- play.perspective === "defensive_failure" (opponent scored against us; their shot choice is not ours to judge)
+- play.finish is a non-shot outcome: "steal", "foul_drawn", "charge_taken", "out_of_bounds", "shot_clock_violation", "unknown_finish"
+- playType indicates a non-shot action (e.g. post_up_pass_out without a shot)
+
+Apply IQ Layer 1 ONLY to plays where OUR offense attempted a shot — finish ∈ {made_2, made_3, missed_2, missed_3, and_one, block}. Blocked shots ARE included: they were still our shot attempts and the decision can be evaluated.
+
+4-FACTOR SCORING — for each eligible shot, score each of the four factors from the Brain as + / ~ / −, using ONLY visible evidence in the clip. If the evidence is unclear or the angle blocks the view, the factor is neutral (~), not negative. Never speculate — a teammate must be VISIBLY open on-screen for factor 3 to go negative.
+
+Factors (full definitions live in the Brain IQ Layer 1 section; abbreviated here):
+1. Defender pressure on shooter at release
+2. Shot clock remaining
+3. Visible better alternatives (open teammate in superior position)
+4. Shot fit to shooter's role
+
+Apply CONTEXTUAL ADJUSTMENTS from the Brain's "IQ CONTEXTUAL ADJUSTMENTS" section: elite creators (factor 4 neutralizes with clear signal), late-game close-score (factor 2 relaxes), early transition < 7 sec into possession (factors 3 and 4 relax — BUT severe factor-4 violations like center step-back threes stay negative), end-of-quarter last 5 sec (factor 2 becomes +/neutral), foul-trouble backups (slight factor 4 latitude).
+
+VERDICT THRESHOLDS:
+- ⚠️ problematic: 2 negative factors, OR 1 severely negative factor (e.g. wide-open teammate clearly ignored)
+- ❌ bad: 3+ negative factors, OR 2 severely negative factors
+- No marker: 0-1 mild negatives (neutral band — the vast majority of shots) OR 3+ positives (quality shot — let phrasing show appreciation naturally)
+
+Expected distribution: 10-20% of eligible shots flagged ⚠️ or ❌; 80-90% unmarked. If in doubt, do not mark.
+
+MARKER PLACEMENT — the marker appends to the END of the already-composed label, after all existing composition (off_ball_action prefix, mechanic, distance, player name, outcome suffix like " — החטיא" or " — נחסם"). Single space separator, no em-dash between outcome suffix and marker:
+- Good/neutral: "פין-דאון לקאץ' אנד שוט שלשה של בלייקני"   (no marker)
+- Problematic: "סטפ-באק שלשה של בלייקני — החטיא ⚠️"
+- Bad: "סטפ-באק שלשה של מוטלי — החטיא ❌"
+- Bad on a make: "פלוטר של מוטלי ❌"
+
+COACH NOTE WHEN MARKER IS APPLIED — the note must briefly explain WHY the marker appeared, in coach-friendly Hebrew. Name the specific negative factors (e.g. "19 שניות על השעון והשוטר בפינה היה פנוי לחלוטין"). When no marker is applied, the note describes the play normally per the NOTE STRUCTURE below. Quality shots may receive natural appreciative phrasing ("בחירה נכונה", "זריקה נקייה אחרי הנעת כדור") but never a ✅ marker.
+
+STRICTNESS REMINDER — a factor counts as "negative" only with CLEAR visual evidence in the clip. Ambiguous → neutral. This is the single most important rule for keeping flag rate in the 10-20% band. Err toward no marker.
+` : '';
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -943,45 +990,7 @@ When off_ball_action is present BUT no shot resulted (the action created advanta
 When off_ball_action is ABSENT: existing label composition logic above is unchanged.
 
 Fade disambiguation reminder: fade_action (off_ball_action) → "ניתוק מסקרין". fadeaway (shot_mechanic) → "פייד-אווי". Both can appear on the same play; compose both ("ניתוק מסקרין לפייד-אווי שלשה של <player>").
-
-═══ SHOT QUALITY EVALUATION (IQ LAYER 1) ═══
-
-After composing the label via the rules above, apply the "BASKETBALL IQ — LAYER 1: SHOT QUALITY PRINCIPLES" section from the Brain (below). This is a JUDGMENT overlay that appends a verdict marker (⚠️ or ❌) to the END of the already-composed label for problematic or bad shot selection. Good and neutral shots stay unmarked — there is no ✅ marker.
-
-APPLICABILITY — IQ Layer 1 evaluates OFFENSIVE shot choice ONLY. Skip the 4-factor evaluation and do NOT apply any verdict marker when ANY of these are true:
-- play.perspective === "defensive_failure" (opponent scored against us; their shot choice is not ours to judge)
-- play.finish is a non-shot outcome: "steal", "foul_drawn", "charge_taken", "out_of_bounds", "shot_clock_violation", "unknown_finish"
-- playType indicates a non-shot action (e.g. post_up_pass_out without a shot)
-
-Apply IQ Layer 1 ONLY to plays where OUR offense attempted a shot — finish ∈ {made_2, made_3, missed_2, missed_3, and_one, block}. Blocked shots ARE included: they were still our shot attempts and the decision can be evaluated.
-
-4-FACTOR SCORING — for each eligible shot, score each of the four factors from the Brain as + / ~ / −, using ONLY visible evidence in the clip. If the evidence is unclear or the angle blocks the view, the factor is neutral (~), not negative. Never speculate — a teammate must be VISIBLY open on-screen for factor 3 to go negative.
-
-Factors (full definitions live in the Brain IQ Layer 1 section; abbreviated here):
-1. Defender pressure on shooter at release
-2. Shot clock remaining
-3. Visible better alternatives (open teammate in superior position)
-4. Shot fit to shooter's role
-
-Apply CONTEXTUAL ADJUSTMENTS from the Brain's "IQ CONTEXTUAL ADJUSTMENTS" section: elite creators (factor 4 neutralizes with clear signal), late-game close-score (factor 2 relaxes), early transition < 7 sec into possession (factors 3 and 4 relax — BUT severe factor-4 violations like center step-back threes stay negative), end-of-quarter last 5 sec (factor 2 becomes +/neutral), foul-trouble backups (slight factor 4 latitude).
-
-VERDICT THRESHOLDS:
-- ⚠️ problematic: 2 negative factors, OR 1 severely negative factor (e.g. wide-open teammate clearly ignored)
-- ❌ bad: 3+ negative factors, OR 2 severely negative factors
-- No marker: 0-1 mild negatives (neutral band — the vast majority of shots) OR 3+ positives (quality shot — let phrasing show appreciation naturally)
-
-Expected distribution: 10-20% of eligible shots flagged ⚠️ or ❌; 80-90% unmarked. If in doubt, do not mark.
-
-MARKER PLACEMENT — the marker appends to the END of the already-composed label, after all existing composition (off_ball_action prefix, mechanic, distance, player name, outcome suffix like " — החטיא" or " — נחסם"). Single space separator, no em-dash between outcome suffix and marker:
-- Good/neutral: "פין-דאון לקאץ' אנד שוט שלשה של בלייקני"   (no marker)
-- Problematic: "סטפ-באק שלשה של בלייקני — החטיא ⚠️"
-- Bad: "סטפ-באק שלשה של מוטלי — החטיא ❌"
-- Bad on a make: "פלוטר של מוטלי ❌"
-
-COACH NOTE WHEN MARKER IS APPLIED — the note must briefly explain WHY the marker appeared, in coach-friendly Hebrew. Name the specific negative factors (e.g. "19 שניות על השעון והשוטר בפינה היה פנוי לחלוטין"). When no marker is applied, the note describes the play normally per the NOTE STRUCTURE below. Quality shots may receive natural appreciative phrasing ("בחירה נכונה", "זריקה נקייה אחרי הנעת כדור") but never a ✅ marker.
-
-STRICTNESS REMINDER — a factor counts as "negative" only with CLEAR visual evidence in the clip. Ambiguous → neutral. This is the single most important rule for keeping flag rate in the 10-20% band. Err toward no marker.
-
+${iqLayer1Block}
 NOTE STRUCTURE — follow this order:
 1. How did possession start? (from possession_origin)
 2. What was the setup? (from setup field)
