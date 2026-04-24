@@ -296,6 +296,43 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, delayMs = 500
   throw new Error('unreachable');
 }
 
+/**
+ * Strip one or more `--- Section Header ---` blocks from a Brain string at prompt-build time.
+ * A section runs from its `--- Header ---` line up to the next `--- Header ---` or end-of-string.
+ * Returns the stripped string plus the list of section headers that were actually found and removed.
+ * Does NOT mutate the input.
+ */
+function stripBrainSections(
+  brain: string,
+  sectionHeaders: string[]
+): { stripped: string; removed: string[] } {
+  const allSectionRegex = /^--- [^\n]+ ---/gm;
+  const allStarts: Array<{ header: string; start: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = allSectionRegex.exec(brain)) !== null) {
+    allStarts.push({ header: m[0], start: m.index });
+  }
+  const removed: string[] = [];
+  const ranges: Array<[number, number]> = [];
+  for (const target of sectionHeaders) {
+    const idx = allStarts.findIndex((s) => s.header === target);
+    if (idx === -1) continue;
+    const start = allStarts[idx].start;
+    const end = idx + 1 < allStarts.length ? allStarts[idx + 1].start : brain.length;
+    ranges.push([start, end]);
+    removed.push(target);
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  let result = '';
+  let cursor = 0;
+  for (const [s, e] of ranges) {
+    result += brain.slice(cursor, s);
+    cursor = e;
+  }
+  result += brain.slice(cursor);
+  return { stripped: result, removed };
+}
+
 interface GeminiPlay {
   startTime: string;
   endTime: string;
@@ -760,10 +797,20 @@ async function enrichPlaysWithClaude(
 
   // 🧪 A/B toggle for the Layer 1 IQ rubric directive. Default = enabled.
   // Set IQ_LAYER_1_ENABLED=false in Railway env to disable the injection.
-  // NOTE: this only gates the directive block in this prompt; the BASKETBALL_BRAIN
-  // blob still includes the Layer 1 principles as background knowledge.
+  // When disabled, we ALSO strip the Brain's IQ sections at prompt-build time so
+  // Arm B gets a clean "no-IQ" condition. The source BASKETBALL_BRAIN constant is
+  // not mutated — the strip is local to this prompt assembly.
   const IQ_LAYER_1_ENABLED = process.env.IQ_LAYER_1_ENABLED !== 'false';
   console.log(`🧪 IQ Layer 1 injection: ${IQ_LAYER_1_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+
+  const IQ_BRAIN_SECTION_HEADERS = [
+    '--- BASKETBALL IQ — LAYER 1: SHOT QUALITY PRINCIPLES ---',
+    '--- IQ CONTEXTUAL ADJUSTMENTS ---',
+  ];
+  const { stripped: brainForPrompt, removed: strippedSections } = IQ_LAYER_1_ENABLED
+    ? { stripped: BASKETBALL_BRAIN, removed: [] as string[] }
+    : stripBrainSections(BASKETBALL_BRAIN, IQ_BRAIN_SECTION_HEADERS);
+  console.log(`🧪 Brain sections stripped for A/B: ${strippedSections.join(', ') || 'none'}`);
 
   // 🧠 IQ Layer 1 — pre-enrichment eligibility log (mirrors the skip rules in the prompt)
   const IQ_NON_SHOT_FINISHES = new Set([
@@ -1001,7 +1048,7 @@ NOTE STRUCTURE — follow this order:
    - defensive_failure: what must we fix?
 
 COACHING KNOWLEDGE:
-${BASKETBALL_BRAIN}
+${brainForPrompt}
 
 ${knowledgeContext}
 ${correctionsBlock}
