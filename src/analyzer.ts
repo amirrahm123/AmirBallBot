@@ -504,6 +504,18 @@ This clip was extracted around timestamp ${timestampStr} in the full game.
 There is ONE play in this clip. Identify and describe ONLY that play.
 Return a JSON array with exactly ONE play object.
 
+═══ CRITICAL EPISTEMIC RULES — READ FIRST ═══
+
+1. DESCRIBE ONLY WHAT YOU LITERALLY SEE in these frames. Do not infer plausible basketball based on context, shot patterns, or what "usually happens." If frames show a player at the rim and the next frame shows the ball going in, do NOT invent the move between — describe only the visible mechanic.
+
+2. JERSEY COLOR CHECK before perspective assignment. State to yourself which jersey color the ball-handler is wearing. If the color clearly matches the analyzing team's color (${jerseyColor || 'unknown'}), perspective=offense. If clearly opponent color (${opponentJerseyColor || 'unknown'}), perspective=defensive_failure if they scored or skip if they didn't. If the color is NOT clearly identifiable (lighting, motion blur, similar tones, partial view), set perspective=unclear and add note: "jersey color not clearly visible".
+
+3. PLAY TYPE — only commit to a specific play type (alley_oop, post_up_finish, coast_to_coast, etc.) if you can clearly see the entire mechanic. If you see the finish but not the setup, return playType=unclear_finish_only. If you see motion but cannot identify the specific mechanic, return playType=unclear_action.
+
+4. PLAYER NUMBERS — only include a jersey number in the players array if you can clearly read it on the jersey in at least one frame. Do not infer player identity from team context, position, or play role. If you cannot read the number, omit the player from the array.
+
+5. UNCLEAR IS A CORRECT ANSWER. The downstream system handles unclear cases gracefully. A guessed answer pollutes the analysis; an unclear answer is honest data. Bias strongly toward unclear when not certain.
+
 ═══ GAME CONTEXT ═══
 Team being analyzed: ${teamName || 'unknown'}
 Their jersey color: ${jerseyColor || 'unknown'}
@@ -690,7 +702,7 @@ Return ONLY valid JSON array with exactly ONE play, no markdown:
 [{
   "startTime": "${timestampStr}",
   "endTime": "...",
-  "playType": "pick_and_roll_finish | pick_and_roll_kickout_3 | pick_and_pop | dribble_handoff | isolation_drive | isolation_fadeaway | post_up_finish | post_up_pass_out | high_low | drive_and_kick | backdoor_cut | skip_pass_corner_3 | elevator_screen | inbound_play | alley_oop_set | transition_steal_dunk | transition_leak_out | fast_break_2on1 | fast_break_3on2 | secondary_break | coast_to_coast | offensive_rebound_putback | offensive_rebound_tip_in | defensive_stop | defensive_block | charge_taken | shot_clock_violation | foul_drawn",
+  "playType": "pick_and_roll_finish | pick_and_roll_kickout_3 | pick_and_pop | dribble_handoff | isolation_drive | isolation_fadeaway | post_up_finish | post_up_pass_out | high_low | drive_and_kick | backdoor_cut | skip_pass_corner_3 | elevator_screen | inbound_play | alley_oop_set | transition_steal_dunk | transition_leak_out | fast_break_2on1 | fast_break_3on2 | secondary_break | coast_to_coast | offensive_rebound_putback | offensive_rebound_tip_in | defensive_stop | defensive_block | charge_taken | shot_clock_violation | foul_drawn | unclear_finish_only | unclear_action",
   "possession_origin": "live_ball | steal | deflection | defensive_rebound | offensive_rebound | inbound | after_timeout | after_foul | press_break | unknown",
   "setup": "1-2 sentences, jersey numbers only",
   "action": "one sentence, jersey numbers only",
@@ -703,7 +715,7 @@ Return ONLY valid JSON array with exactly ONE play, no markdown:
   "finish_location": "paint | midrange_left | midrange_right | corner_3_left | corner_3_right | above_break_3 | free_throw_line",
   "players": ["#11", "#2"],
   "type": "offense | defense | transition",
-  "perspective": "offense | defense | defensive_failure",
+  "perspective": "offense | defense | defensive_failure | unclear",
   "description": "one sentence in English, jersey numbers only"
 }]`;
 }
