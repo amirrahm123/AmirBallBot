@@ -86,6 +86,9 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   ? path.join(BIN_DIR, 'ffprobe.exe')
   : 'ffprobe';
 
+// Gemini model identifier. Default keeps current behavior; override via env to A/B test.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי ישראלי. נתח את התמונות האלה ממשחק כדורסל והחזר JSON בלבד:
 {
   "game": "תיאור קצר של המשחק",
@@ -459,7 +462,7 @@ When uncertain, INCLUDE the timestamp. Missing a real play is worse than emittin
   try {
     const rawResponse = await retryWithBackoff(async () => {
       const res = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: GEMINI_MODEL,
         config: {
           temperature: 0.1,
           maxOutputTokens: 2048,
@@ -860,7 +863,7 @@ async function analyzeClipAtTimestamp(
   try {
     const result = await retryWithBackoff(async () => {
       const res = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: GEMINI_MODEL,
         config: {
           temperature: 0.1,
           maxOutputTokens: 4096,
@@ -1691,6 +1694,8 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
   if (!fileUri) {
     throw new Error('No video file URI available for analysis');
   }
+
+  console.log(`🤖 Gemini model: ${GEMINI_MODEL}`);
 
   // Jersey color auto-detect via Claude Haiku. Fills in blanks only — if the
   // user typed the colors in the form we trust them. Requires a local video
