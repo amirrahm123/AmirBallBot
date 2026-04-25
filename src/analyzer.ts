@@ -18,10 +18,15 @@ import BASKETBALL_BRAIN from './knowledge/basketballBrain';
  *
  * Returns '' when nothing usable is found — caller concatenates blindly.
  */
-async function loadRecentCorrections(): Promise<string> {
+async function loadRecentCorrections(teamName: string): Promise<string> {
+  const trimmedTeam = (teamName || '').trim();
+  if (!trimmedTeam) {
+    console.log('🆕 No team name set — skipping past corrections injection');
+    return '';
+  }
   try {
     const recentJobs = await Job.find(
-      { 'corrections.0': { $exists: true } },
+      { 'corrections.0': { $exists: true }, 'input.teamName': trimmedTeam },
       { corrections: 1, createdAt: 1 },
     ).sort({ createdAt: -1 }).limit(5);
 
@@ -38,7 +43,7 @@ async function loadRecentCorrections(): Promise<string> {
       return '';
     }
     const last20 = bullets.slice(0, 20);
-    console.log(`📚 Injecting ${last20.length} past corrections from ${recentJobs.length} recent games into prompt`);
+    console.log(`📚 Injecting ${last20.length} past corrections from ${recentJobs.length} recent "${trimmedTeam}" games into prompt`);
     return `\n\nCOACH CORRECTIONS — real examples from this team's games. Study these carefully and apply the same patterns:\n${last20.join('\n')}\n\nWhen you see a similar situation, use these corrections to identify the play correctly.`;
   } catch (err) {
     console.warn('⚠️ Could not load corrections:', err);
@@ -1174,7 +1179,7 @@ async function enrichPlaysWithClaude(
 
   const client = getClient();
   const knowledgeContext = await getKnowledgeContext();
-  const correctionsBlock = await loadRecentCorrections();
+  const correctionsBlock = await loadRecentCorrections(teamName);
 
   const iqLayer1Block = IQ_LAYER_1_ENABLED ? `
 ═══ SHOT QUALITY EVALUATION (IQ LAYER 1) ═══
