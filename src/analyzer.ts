@@ -506,6 +506,39 @@ function buildClipPrompt(
   context: string
 ): string {
   const rosterText = roster || '(no roster provided)';
+
+  // 🎯 Shot mechanic disambiguation guide. Default ENABLED.
+  // Set SHOT_MECHANIC_GUIDE_ENABLED=false in Railway env for instant rollback.
+  const SHOT_MECHANIC_GUIDE_ENABLED = process.env.SHOT_MECHANIC_GUIDE_ENABLED !== 'false';
+  console.log(`🎯 Shot mechanic guide: ${SHOT_MECHANIC_GUIDE_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+
+  const shotMechanicGuide = SHOT_MECHANIC_GUIDE_ENABLED ? `
+═══ SHOT MECHANIC GUIDE ═══
+
+When the play involves a shot, distinguish these mechanics carefully. Each has distinct visual signatures:
+
+DUNK MECHANICS:
+- two_hand_dunk: BOTH hands grip the ball at the rim. Watch for both arms extending up together.
+- one_hand_dunk: Only the dominant hand finishes at the rim. The off-hand is below the rim or off the ball. Common in transition.
+- alley_oop_dunk: Player catches a pass in mid-air and dunks. The catch and dunk happen as one motion without dribbling.
+
+LAYUP / NEAR-RIM SHOTS (key distinctions):
+- layup: Standard near-rim finish off the backboard or rim. Player drives in and releases close to the rim with one hand.
+- floater: Soft, high-arcing shot released from 5-10 feet out, OVER a defender. The ball goes UP first, then drops. Player jumps and releases while still rising.
+- gumper / runner: A jump shot taken on the move from mid-range (10-15 feet), often after a drive. Different from a floater - lower arc, more of a quick pull-up jumper while still moving forward. Some players (Shai, KD) use this often.
+- scoop_layup: Underhanded finish, ball cradled below the player's chest level on release. Used to avoid blocks at the rim.
+
+JUMP SHOT MECHANICS:
+- catch_and_shoot: Player receives the ball already squared up to the rim, no dribbles before the shot.
+- pull_up_jumper: Player dribbles, gathers, and pulls up for a jumper. There IS a dribble before the shot.
+- step_back_jumper: Player creates space by stepping AWAY from the defender before shooting. Visible backward motion before the shot.
+- fadeaway: Player leans BACKWARD during the release. Body angles away from the rim.
+
+DECISION RULE: If you cannot clearly see the player's body motion and release in the frames provided, mark shot_mechanic_confidence=low. Do NOT default to "layup" or "jumper" when the mechanic is unclear - those are specific mechanics, not catch-all categories.
+
+═══ END SHOT MECHANIC GUIDE ═══
+` : '';
+
   return `You are watching an 18-second clip from a basketball game.
 This clip was extracted around timestamp ${timestampStr} in the full game.
 There is ONE play in this clip. Identify and describe ONLY that play.
@@ -577,7 +610,7 @@ This is BAD because the player being near the rim doesn't prove it was a post-up
 Marking confidence as HIGH when you didn't actually see clearly is the WORST possible answer. It creates errors that look correct.
 Marking confidence as LOW when uncertain is the BEST possible answer. It creates honest data.
 The downstream system handles low-confidence and unclear values gracefully. Confident wrong answers cause cascading errors.
-
+${shotMechanicGuide}
 ═══ GAME CONTEXT ═══
 Team being analyzed: ${teamName || 'unknown'}
 Their jersey color: ${jerseyColor || 'unknown'}
