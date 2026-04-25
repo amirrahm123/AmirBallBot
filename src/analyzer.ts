@@ -19,6 +19,12 @@ import BASKETBALL_BRAIN from './knowledge/basketballBrain';
  * Returns '' when nothing usable is found — caller concatenates blindly.
  */
 async function loadRecentCorrections(teamName: string): Promise<string> {
+  const CORRECTIONS_INJECTION_ENABLED = process.env.CORRECTIONS_INJECTION_ENABLED !== 'false';
+  if (!CORRECTIONS_INJECTION_ENABLED) {
+    console.log('🚫 Corrections injection: DISABLED via env');
+    return '';
+  }
+  console.log('📚 Corrections injection: ENABLED');
   const trimmedTeam = (teamName || '').trim();
   if (!trimmedTeam) {
     console.log('🆕 No team name set — skipping past corrections injection');
