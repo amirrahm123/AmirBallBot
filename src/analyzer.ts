@@ -936,6 +936,164 @@ async function analyzeClipAtTimestamp(
   }
 }
 
+/**
+ * STEP 2.5 (post-enrichment): Focused Haiku refinement of shot mechanic only.
+ * Runs after enrichment + dedup, before insights. For each enriched play whose
+ * underlying Gemini play represents a shot attempt, ask Haiku ONLY "what was
+ * the shot mechanic?" using the play's `what_i_actually_saw` description as
+ * grounding. Override Gemini's mechanic only if Haiku is high-confidence AND
+ * disagrees. When overriding, swap the Hebrew phrase in the existing label.
+ *
+ * Strict scope: shot mechanic only. No other fields touched. Toggle via
+ * SHOT_MECHANIC_REFINE_ENABLED env var (default true) for instant rollback.
+ */
+async function refineShotMechanicsWithHaiku(
+  geminiPlays: GeminiPlay[],
+  enrichedPlays: AnalysisResult['plays']
+): Promise<AnalysisResult['plays']> {
+  const SHOT_MECHANIC_REFINE_ENABLED = process.env.SHOT_MECHANIC_REFINE_ENABLED !== 'false';
+  console.log(`🔬 Shot mechanic refinement: ${SHOT_MECHANIC_REFINE_ENABLED ? 'ENABLED' : 'DISABLED'}`);
+  if (!SHOT_MECHANIC_REFINE_ENABLED) return enrichedPlays;
+
+  // Mirrors the Hebrew translation map in enrichPlaysWithClaude. Used to
+  // substitute the OLD mechanic's Hebrew phrase with the NEW one in the label.
+  // Includes Haiku-only choice values (gumper, pull_up_jumper, step_back_jumper,
+  // alley_oop_dunk) mapped to existing Hebrew where one exists.
+  const MECHANIC_HEBREW: Record<string, string> = {
+    floater: 'פלוטר',
+    scoop_layup: 'לייאפ סקופ',
+    finger_roll: 'פינגר רול',
+    reverse_layup: 'לייאפ הפוך',
+    euro_step: 'אירו סטפ',
+    jump_hook: 'הוק בקפיצה',
+    running_hook: 'הוק בריצה',
+    up_and_under: 'אפ-אנד-אנדר',
+    tip_in: 'טיפ-אין',
+    putback: 'פוטבק',
+    putback_dunk: 'פוטבק דאנק',
+    catch_and_shoot: "קאץ' אנד שוט",
+    pull_up: 'פול-אפ',
+    pull_up_jumper: 'פול-אפ',
+    step_back: 'סטפ-באק',
+    step_back_jumper: 'סטפ-באק',
+    fadeaway: 'פייד-אווי',
+    turnaround: 'טרנ-אראונד',
+    pump_fake_shot: 'הטעיית קליעה',
+    one_hand_dunk: 'דאנק ביד אחת',
+    two_hand_dunk: 'סלאם',
+    alley_oop_dunk: 'אלי-אופ',
+    bank_shot: 'זריקת לוח',
+    layup: 'לייאפ',
+    jumper: 'קפיצה',
+    dunk: 'דאנק',
+    gumper: 'גאמפר',
+  };
+
+  // Eligible finishes: anything that involved a shot attempt.
+  const SHOT_FINISHES = new Set(['made_2', 'made_3', 'missed_2', 'missed_3', 'block', 'and_one']);
+
+  const geminiByTs = new Map<string, GeminiPlay>(
+    geminiPlays.map((p) => [p.startTime, p]),
+  );
+
+  const client = getClient();
+  let totalShots = 0;
+  let overridden = 0;
+  let kept = 0;
+  let haikuUnclear = 0;
+
+  // Run refinements in parallel — each call is independent and small.
+  const tasks = enrichedPlays.map(async (enriched, i) => {
+    const gemini = geminiByTs.get(enriched.startTime);
+    if (!gemini || !gemini.finish || !SHOT_FINISHES.has(gemini.finish)) return;
+    if (!gemini.shot_mechanic) return;
+    totalShots++;
+
+    const description =
+      (typeof gemini.what_i_actually_saw === 'string' && gemini.what_i_actually_saw) ||
+      (typeof gemini.description === 'string' && gemini.description) ||
+      '';
+
+    let refined: { refined_mechanic: string; reason: string; confidence: 'high' | 'medium' | 'low' } | null = null;
+    try {
+      const haikuResp = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 256,
+        messages: [{
+          role: 'user',
+          content: `Based on this description of a basketball play, what was the actual shot mechanic?
+
+Description: ${description}
+Gemini's initial answer: ${gemini.shot_mechanic}
+Play type: ${gemini.playType || '(unknown)'}
+Finish: ${gemini.finish}
+
+Choose from this list: layup, scoop_layup, floater, gumper, pull_up_jumper, catch_and_shoot, step_back_jumper, fadeaway, one_hand_dunk, two_hand_dunk, alley_oop_dunk.
+
+If the description does not contain enough detail to determine the mechanic with confidence, return "unclear".
+
+Return ONLY a JSON object, no other text:
+{"refined_mechanic": "<value>", "reason": "<one sentence>", "confidence": "high"|"medium"|"low"}`,
+        }],
+      });
+      const text = haikuResp.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) refined = JSON.parse(m[0]);
+    } catch (err: any) {
+      kept++;
+      console.log(`🔬 Mechanic refine: clip ${enriched.startTime} → original=${gemini.shot_mechanic} haiku=ERROR confidence=missing → action=kept reason="haiku call failed: ${err?.message || err}"`);
+      return;
+    }
+
+    if (!refined || typeof refined.refined_mechanic !== 'string') {
+      kept++;
+      console.log(`🔬 Mechanic refine: clip ${enriched.startTime} → original=${gemini.shot_mechanic} haiku=NO_JSON confidence=missing → action=kept reason="haiku returned no parseable JSON"`);
+      return;
+    }
+
+    if (refined.refined_mechanic === 'unclear') {
+      haikuUnclear++;
+      console.log(`🔬 Mechanic refine: clip ${enriched.startTime} → original=${gemini.shot_mechanic} haiku=unclear confidence=${refined.confidence} → action=kept reason="${refined.reason}"`);
+      return;
+    }
+
+    if (refined.refined_mechanic === gemini.shot_mechanic) {
+      kept++;
+      console.log(`🔬 Mechanic refine: clip ${enriched.startTime} → original=${gemini.shot_mechanic} haiku=${refined.refined_mechanic} confidence=${refined.confidence} → action=kept reason="${refined.reason}"`);
+      return;
+    }
+
+    if (refined.confidence !== 'high') {
+      kept++;
+      console.log(`🔬 Mechanic refine: clip ${enriched.startTime} → original=${gemini.shot_mechanic} haiku=${refined.refined_mechanic} confidence=${refined.confidence} → action=kept reason="${refined.reason}"`);
+      return;
+    }
+
+    // Override: confidence=high AND mechanic differs.
+    const oldHe = MECHANIC_HEBREW[gemini.shot_mechanic] || '';
+    const newHe = MECHANIC_HEBREW[refined.refined_mechanic] || refined.refined_mechanic;
+    let labelStatus = 'overridden';
+    if (oldHe && enriched.label && enriched.label.includes(oldHe) && oldHe !== newHe) {
+      enrichedPlays[i] = { ...enriched, label: enriched.label.replace(oldHe, newHe) };
+    } else if (oldHe === newHe) {
+      labelStatus = 'overridden (label unchanged - same hebrew)';
+    } else {
+      labelStatus = 'overridden (label-phrase-not-found)';
+    }
+    overridden++;
+    console.log(`🔬 Mechanic refine: clip ${enriched.startTime} → original=${gemini.shot_mechanic} haiku=${refined.refined_mechanic} confidence=${refined.confidence} → action=${labelStatus} reason="${refined.reason}"`);
+  });
+
+  await Promise.all(tasks);
+
+  console.log(`🔬 Refinement summary: total_shots=${totalShots} overridden=${overridden} kept=${kept} haiku_unclear=${haikuUnclear}`);
+
+  return enrichedPlays;
+}
+
 /** STEP 2: Enrich Gemini plays with Hebrew coaching analysis via Claude */
 async function enrichPlaysWithClaude(
   geminiPlays: GeminiPlay[],
@@ -1575,10 +1733,14 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
   const rawEnriched = await enrichPlaysWithClaude(geminiPlays, roster, teamName, focus);
 
   // Safety net: Gemini sometimes emits two timestamps for the same possession.
-  const enrichedPlays = dedupOverlappingPlays(rawEnriched);
-  if (enrichedPlays.length < rawEnriched.length) {
-    console.log(`🧹 Dedup removed ${rawEnriched.length - enrichedPlays.length} overlapping plays`);
+  const dedupedPlays = dedupOverlappingPlays(rawEnriched);
+  if (dedupedPlays.length < rawEnriched.length) {
+    console.log(`🧹 Dedup removed ${rawEnriched.length - dedupedPlays.length} overlapping plays`);
   }
+
+  // Step 3.5: Haiku post-enrichment refinement of shot mechanic only.
+  onProgress?.(95, 'מדייק את מכניקת הזריקות...');
+  const enrichedPlays = await refineShotMechanicsWithHaiku(geminiPlays, dedupedPlays);
 
   // Step 4: Claude generates coaching insights
   onProgress?.(97, 'מייצר תובנות...');
