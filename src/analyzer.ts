@@ -104,6 +104,7 @@ export interface AnalysisResult {
   insights: { type: 'good' | 'warn' | 'bad'; title: string; body: string }[];
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
   videoUrl?: string;
+  coachNotes?: { _id?: string; timestamp: number; text: string; createdAt: string }[];
 }
 
 // Persistent storage for analyzed videos so the editor can stream them.

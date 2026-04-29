@@ -122,6 +122,11 @@ const AnalysisSchema = new mongoose.Schema({
   insights: Array,
   playCount: Number,
   videoUrl: { type: String, default: '' },
+  coachNotes: [{
+    timestamp: { type: Number, required: true },
+    text: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  }],
   createdAt: { type: Date, default: Date.now },
 });
 export const Analysis = mongoose.model('Analysis', AnalysisSchema);

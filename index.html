@@ -201,6 +201,46 @@ textarea{resize:vertical;min-height:80px}
 .editor-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .editor-empty{text-align:center;padding:60px 20px;color:var(--text3)}
 @media(max-width:900px){.editor-grid{grid-template-columns:1fr}.editor-suggestions-card{max-height:none}}
+
+/* === Editor coach notes panel === */
+.editor-notes-panel{position:fixed;bottom:16px;left:16px;width:320px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .2s ease}
+.editor-notes-panel.collapsed .editor-notes-body{display:none}
+.editor-notes-panel.collapsed{width:200px}
+.editor-notes-header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;font-weight:600}
+.editor-notes-panel.collapsed .editor-notes-header{border-bottom:none}
+.editor-notes-badge{background:var(--accent);color:#000;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-right:auto}
+.editor-notes-toggle{background:transparent;border:none;color:var(--text2);cursor:pointer;padding:0 4px;font-size:0}
+.editor-notes-toggle::before{font-size:14px}
+.editor-notes-panel.collapsed .editor-notes-toggle::before{content:'▲'}
+.editor-notes-panel:not(.collapsed) .editor-notes-toggle::before{content:'▼'}
+.editor-notes-body{padding:12px 16px;max-height:400px;overflow-y:auto}
+.editor-notes-input-row{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+#editor-note-input{width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;resize:vertical;direction:rtl}
+#editor-note-input:focus{border-color:var(--accent);outline:none}
+.editor-note-add-btn{align-self:flex-end;padding:6px 16px;font-size:13px;border:none;border-radius:8px;background:var(--accent);color:#0a0c0f;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+.editor-note-add-btn:hover:not(:disabled){background:var(--accent2)}
+.editor-note-add-btn:disabled{opacity:.4;cursor:not-allowed}
+.editor-notes-list{display:flex;flex-direction:column;gap:8px}
+.editor-note-item{background:var(--bg3);border-radius:8px;padding:10px 12px;border-right:3px solid var(--accent);transition:background .15s ease}
+.editor-note-item:hover{background:var(--bg4)}
+.editor-note-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.editor-note-time{font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);font-weight:600;cursor:pointer}
+.editor-note-time:hover{text-decoration:underline}
+.editor-note-actions{display:flex;gap:4px;opacity:0;transition:opacity .15s ease}
+.editor-note-item:hover .editor-note-actions{opacity:1}
+.editor-note-action-btn{background:transparent;border:none;color:var(--text2);cursor:pointer;padding:2px 6px;font-size:12px;border-radius:4px}
+.editor-note-action-btn:hover{background:var(--bg4);color:var(--text)}
+.editor-note-action-btn.delete:hover{color:var(--red)}
+.editor-note-text{font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.editor-note-item.editing .editor-note-text{display:none}
+.editor-note-edit-textarea{width:100%;padding:6px 8px;background:var(--bg2);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-family:inherit;font-size:13px;resize:vertical;direction:rtl;display:none}
+.editor-note-item.editing .editor-note-edit-textarea{display:block}
+.editor-note-edit-actions{display:none;gap:6px;margin-top:6px;justify-content:flex-end}
+.editor-note-item.editing .editor-note-edit-actions{display:flex}
+.editor-note-edit-actions button{padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-family:'DM Sans',sans-serif}
+.editor-note-edit-actions button.save{background:var(--accent);color:#000;border-color:var(--accent)}
+.editor-notes-empty{text-align:center;color:var(--text2);padding:20px;font-size:13px}
+.editor-notes-locked{text-align:center;color:var(--text3);padding:20px;font-size:13px;font-style:italic}
 </style>
 </head>
 <body>
@@ -438,6 +478,21 @@ textarea{resize:vertical;min-height:80px}
             <h3>רגעים שזוהו (<span id="editor-suggestions-count">0</span>)</h3>
           </div>
           <div id="editor-suggestions-list" class="editor-suggestions-list"></div>
+        </div>
+      </div>
+
+      <div id="editor-notes-panel" class="editor-notes-panel">
+        <div class="editor-notes-header" id="editor-notes-header">
+          <span>📝 הערות שלי</span>
+          <span id="editor-notes-count" class="editor-notes-badge">0</span>
+          <button id="editor-notes-toggle" class="editor-notes-toggle" type="button"></button>
+        </div>
+        <div id="editor-notes-body" class="editor-notes-body">
+          <div id="editor-notes-input-wrap" class="editor-notes-input-row">
+            <textarea id="editor-note-input" placeholder="כתוב הערה לרגע הנוכחי... (Ctrl+Enter לשמירה)" rows="2"></textarea>
+            <button id="editor-note-add-btn" class="editor-note-add-btn" type="button">הוסף</button>
+          </div>
+          <div id="editor-notes-list" class="editor-notes-list"></div>
         </div>
       </div>
     </div>
@@ -1425,8 +1480,10 @@ let editorPlays = [];
 let editorVideoUrl = '';
 let editorActiveFilter = 'all';
 let editorYtPlayer = null;
+let editorNotes = [];
+let editorAnalysisId = null;
 
-function loadEditor(plays, videoUrl) {
+function loadEditor(plays, videoUrl, analysisId) {
   if (!videoUrl) {
     alert('צריך URL של וידאו כדי לפתוח עורך');
     return;
@@ -1461,6 +1518,7 @@ function loadEditor(plays, videoUrl) {
 
   initEditorVideoPlayer(videoUrl, ytId);
   renderEditorSuggestions();
+  loadEditorNotes(analysisId || null);
 }
 
 function initEditorVideoPlayer(videoUrl, videoId) {
@@ -1604,7 +1662,8 @@ function openCurrentInEditor() {
   const plays = (currentAnalysis && currentAnalysis.plays) || [];
   // Prefer backend-served video (full seek control) over the user-pasted URL.
   const url = (currentAnalysis && currentAnalysis.videoUrl) || currentVideoUrl;
-  loadEditor(plays, url);
+  const id = currentAnalysis && (currentAnalysis.analysisId || currentAnalysis._id);
+  loadEditor(plays, url, id);
 }
 
 function openSavedInEditor(id) {
@@ -1617,10 +1676,219 @@ function openSavedInEditor(id) {
         url = prompt('לא נמצא וידאו שמור. הדבק קישור YouTube של המשחק:') || '';
       }
       if (!url) return;
-      loadEditor(data.plays || [], url);
+      loadEditor(data.plays || [], url, data._id || id);
     })
     .catch(err => { console.error(err); alert('שגיאה בטעינה'); });
 }
+
+// === Coach notes (per-timestamp) ===
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text == null ? '' : String(text);
+  return div.innerHTML;
+}
+
+function formatNoteTime(seconds) {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function seekToNoteTime(seconds) {
+  if (editorYtPlayer && typeof editorYtPlayer.seekTo === 'function') {
+    editorYtPlayer.seekTo(seconds, true);
+    if (typeof editorYtPlayer.playVideo === 'function') editorYtPlayer.playVideo();
+  }
+}
+
+async function loadEditorNotes(analysisId) {
+  editorAnalysisId = analysisId || null;
+  if (!editorAnalysisId) {
+    editorNotes = [];
+    renderEditorNotes();
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}`);
+    const data = await res.json();
+    editorNotes = (data.coachNotes || []).map(n => ({
+      _id: String(n._id),
+      timestamp: Number(n.timestamp) || 0,
+      text: n.text || '',
+      createdAt: n.createdAt,
+    }));
+  } catch (e) {
+    console.error('Failed to load notes:', e);
+    editorNotes = [];
+  }
+  renderEditorNotes();
+}
+
+function renderEditorNotes() {
+  const list = document.getElementById('editor-notes-list');
+  const countEl = document.getElementById('editor-notes-count');
+  const inputWrap = document.getElementById('editor-notes-input-wrap');
+  if (!list || !countEl) return;
+
+  countEl.textContent = editorNotes.length;
+
+  if (!editorAnalysisId) {
+    if (inputWrap) inputWrap.style.display = 'none';
+    list.innerHTML = '<div class="editor-notes-locked">שמור את הניתוח כדי להוסיף הערות</div>';
+    return;
+  }
+  if (inputWrap) inputWrap.style.display = 'flex';
+
+  if (editorNotes.length === 0) {
+    list.innerHTML = '<div class="editor-notes-empty">אין הערות עדיין. הוסף הערה ראשונה כדי לסמן רגע חשוב.</div>';
+    return;
+  }
+
+  const sorted = [...editorNotes].sort((a, b) => a.timestamp - b.timestamp);
+  list.innerHTML = sorted.map(note => {
+    const timeStr = formatNoteTime(note.timestamp);
+    const safeText = escapeHtml(note.text);
+    return `
+      <div class="editor-note-item" data-note-id="${note._id}">
+        <div class="editor-note-item-header">
+          <span class="editor-note-time" onclick="seekToNoteTime(${note.timestamp})" title="דלג לרגע זה">${timeStr}</span>
+          <div class="editor-note-actions">
+            <button class="editor-note-action-btn" onclick="startEditNote('${note._id}')" title="ערוך">✏️</button>
+            <button class="editor-note-action-btn delete" onclick="deleteNote('${note._id}')" title="מחק">🗑️</button>
+          </div>
+        </div>
+        <div class="editor-note-text">${safeText}</div>
+        <textarea class="editor-note-edit-textarea" id="edit-textarea-${note._id}">${safeText}</textarea>
+        <div class="editor-note-edit-actions">
+          <button onclick="cancelEditNote('${note._id}')">בטל</button>
+          <button class="save" onclick="saveEditNote('${note._id}')">שמור</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function addEditorNote() {
+  if (!editorAnalysisId) {
+    alert('שמור את הניתוח לפני הוספת הערות');
+    return;
+  }
+  const input = document.getElementById('editor-note-input');
+  const text = (input.value || '').trim();
+  if (!text) return;
+
+  let timestamp = 0;
+  try {
+    if (editorYtPlayer && typeof editorYtPlayer.getCurrentTime === 'function') {
+      timestamp = Number(editorYtPlayer.getCurrentTime()) || 0;
+    }
+  } catch (_) { timestamp = 0; }
+
+  const btn = document.getElementById('editor-note-add-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timestamp, text }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save note');
+    }
+    const note = await res.json();
+    editorNotes.push({
+      _id: String(note._id),
+      timestamp: Number(note.timestamp) || 0,
+      text: note.text || '',
+      createdAt: note.createdAt,
+    });
+    input.value = '';
+    renderEditorNotes();
+  } catch (e) {
+    console.error(e);
+    alert('שגיאה בשמירת ההערה');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function startEditNote(noteId) {
+  const item = document.querySelector(`.editor-note-item[data-note-id="${noteId}"]`);
+  if (!item) return;
+  item.classList.add('editing');
+  const ta = document.getElementById(`edit-textarea-${noteId}`);
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function cancelEditNote(noteId) {
+  const item = document.querySelector(`.editor-note-item[data-note-id="${noteId}"]`);
+  if (!item) return;
+  item.classList.remove('editing');
+  const note = editorNotes.find(n => n._id === noteId);
+  const ta = document.getElementById(`edit-textarea-${noteId}`);
+  if (ta && note) ta.value = note.text;
+}
+
+async function saveEditNote(noteId) {
+  const ta = document.getElementById(`edit-textarea-${noteId}`);
+  if (!ta) return;
+  const newText = (ta.value || '').trim();
+  if (!newText) return;
+  try {
+    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}/notes/${noteId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: newText }),
+    });
+    if (!res.ok) throw new Error('Failed to update');
+    const note = editorNotes.find(n => n._id === noteId);
+    if (note) note.text = newText;
+    renderEditorNotes();
+  } catch (e) {
+    console.error(e);
+    alert('שגיאה בעדכון ההערה');
+  }
+}
+
+async function deleteNote(noteId) {
+  if (!confirm('למחוק את ההערה?')) return;
+  try {
+    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}/notes/${noteId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete');
+    editorNotes = editorNotes.filter(n => n._id !== noteId);
+    renderEditorNotes();
+  } catch (e) {
+    console.error(e);
+    alert('שגיאה במחיקת ההערה');
+  }
+}
+
+function toggleNotesPanel() {
+  const panel = document.getElementById('editor-notes-panel');
+  if (panel) panel.classList.toggle('collapsed');
+}
+
+(function wireEditorNotesEvents() {
+  const addBtn = document.getElementById('editor-note-add-btn');
+  if (addBtn) addBtn.addEventListener('click', addEditorNote);
+  const header = document.getElementById('editor-notes-header');
+  if (header) header.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t && (t.id === 'editor-notes-toggle' || t.id === 'editor-notes-count')) return;
+    toggleNotesPanel();
+  });
+  const toggle = document.getElementById('editor-notes-toggle');
+  if (toggle) toggle.addEventListener('click', (e) => { e.stopPropagation(); toggleNotesPanel(); });
+  const input = document.getElementById('editor-note-input');
+  if (input) input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      addEditorNote();
+    }
+  });
+})();
 </script>
 </body>
 </html>
