@@ -180,27 +180,51 @@ textarea{resize:vertical;min-height:80px}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* === Editor screen === */
-.editor-grid{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
 .editor-video-wrap{position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:var(--radius);background:#000}
 .editor-video-wrap iframe,.editor-video-wrap > div{position:absolute;top:0;left:0;width:100%;height:100%}
-.editor-controls{display:flex;justify-content:space-between;gap:16px;margin-top:12px;flex-wrap:wrap}
+.editor-top-controls{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .editor-speed-group,.editor-filter-group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .editor-speed-btn,.editor-filter-pill{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;transition:.2s}
 .editor-speed-btn.active,.editor-filter-pill.active{background:var(--accent);color:#0a0c0f;border-color:var(--accent)}
 .editor-speed-btn:hover,.editor-filter-pill:hover{background:var(--bg4)}
 .editor-speed-btn.active:hover,.editor-filter-pill.active:hover{background:var(--accent2)}
-.editor-suggestions-card{max-height:calc(100vh - 200px);display:flex;flex-direction:column}
-.editor-suggestions-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-left:4px}
-.editor-suggestion{padding:12px;background:var(--bg3);border-radius:var(--radius);cursor:pointer;border-right:3px solid transparent;transition:background .15s ease,border-color .15s ease;display:flex;gap:12px;align-items:flex-start}
-.editor-suggestion:hover{background:var(--bg4)}
-.editor-suggestion.active{background:var(--bg4);border-right-color:var(--accent)}
-.editor-suggestion-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:52px;flex-shrink:0;padding-top:2px}
-.editor-suggestion-body{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
-.editor-suggestion-label{font-size:13px;font-weight:500;line-height:1.4}
-.editor-suggestion-players{font-size:12px;color:var(--text3);font-family:'DM Mono',monospace}
 .editor-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .editor-empty{text-align:center;padding:60px 20px;color:var(--text3)}
-@media(max-width:900px){.editor-grid{grid-template-columns:1fr}.editor-suggestions-card{max-height:none}}
+
+/* Timeline */
+.editor-timeline-wrapper{position:relative;padding:24px 12px 8px;background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border)}
+.editor-timeline-track{position:relative;height:56px;background:linear-gradient(to bottom,rgba(0,229,160,0.04) 0%,rgba(0,229,160,0.04) 33%,rgba(255,197,68,0.04) 33%,rgba(255,197,68,0.04) 66%,rgba(255,77,106,0.04) 66%,rgba(255,77,106,0.04) 100%);border-radius:8px;cursor:pointer;overflow:visible}
+.editor-timeline-track::before,.editor-timeline-track::after{content:'';position:absolute;left:0;right:0;height:1px;background:var(--border);pointer-events:none;opacity:.3}
+.editor-timeline-track::before{top:33.33%}
+.editor-timeline-track::after{top:66.66%}
+.editor-timeline-marker{position:absolute;width:12px;height:12px;cursor:pointer;transition:transform .18s cubic-bezier(0.34,1.56,0.64,1),box-shadow .15s ease;will-change:transform}
+.editor-timeline-marker:hover{transform:translate(50%,-50%) scale(1.8);z-index:10}
+.editor-timeline-marker.shape-circle-filled{border-radius:50%;background:currentColor;box-shadow:0 0 0 2px var(--bg2)}
+.editor-timeline-marker.shape-circle-hollow{border-radius:50%;background:var(--bg2);border:2px solid currentColor;width:14px;height:14px}
+.editor-timeline-marker.shape-triangle{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid currentColor;background:transparent;box-shadow:none}
+.editor-timeline-marker.shape-square{background:currentColor;border-radius:2px;width:11px;height:11px;box-shadow:0 0 0 2px var(--bg2)}
+.editor-timeline-marker.type-offense{color:var(--accent)}
+.editor-timeline-marker.type-defense{color:var(--red)}
+.editor-timeline-marker.type-transition{color:var(--yellow)}
+.editor-timeline-marker.cluster{width:auto;min-width:24px;height:18px;border-radius:9px;padding:0 6px;background:var(--bg4);border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--text);box-shadow:0 0 0 2px var(--bg2)}
+.editor-timeline-progress{position:absolute;right:0;top:-4px;bottom:-4px;width:2px;background:var(--text);pointer-events:none;will-change:right}
+.editor-timeline-times{display:flex;justify-content:space-between;margin-top:8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)}
+
+/* Floating play card. Uses position:fixed because positionPlayCard()
+   computes coords from getBoundingClientRect (viewport space). */
+.editor-play-card{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:360px;max-width:90vw;box-shadow:0 8px 24px rgba(0,0,0,0.5);pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .2s ease;will-change:opacity,transform;z-index:1000;overflow:hidden;left:0;top:0}
+.editor-play-card.visible{opacity:1;transform:translateY(0)}
+.editor-play-card-preview{background:#000;aspect-ratio:16/9;position:relative;overflow:hidden}
+.editor-play-card-preview iframe,.editor-play-card-preview video,.editor-play-card-preview > div{width:100%!important;height:100%!important;pointer-events:none;position:absolute;top:0;left:0}
+.editor-play-card-content{padding:12px 16px}
+.editor-play-card-header{display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;color:var(--text2)}
+.editor-play-card-label{font-weight:600;font-size:15px;margin-bottom:6px;color:var(--text)}
+.editor-play-card-players{font-size:12px;color:var(--text2);margin-bottom:8px}
+.editor-play-card-note{font-size:13px;line-height:1.5;color:var(--text)}
+.editor-play-card-type{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.editor-play-card-type.offense{background:rgba(0,229,160,0.15);color:var(--accent)}
+.editor-play-card-type.defense{background:rgba(255,77,106,0.15);color:var(--red)}
+.editor-play-card-type.transition{background:rgba(255,197,68,0.15);color:var(--yellow)}
 
 /* === Editor coach notes panel === */
 .editor-notes-panel{position:fixed;bottom:16px;left:16px;width:320px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .2s ease}
@@ -477,33 +501,57 @@ textarea{resize:vertical;min-height:80px}
         <p>פתח ניתוח משחק ולחץ "פתח בעורך וידאו" כדי להתחיל</p>
       </div>
 
-      <div id="editor-content" class="editor-grid hidden">
-        <div>
-          <div class="card" style="padding:12px">
-            <div class="editor-video-wrap" id="editor-video-container"></div>
-            <div class="editor-controls">
-              <div class="editor-speed-group">
-                <span style="color:var(--text2);font-size:12px">מהירות:</span>
-                <button class="editor-speed-btn" data-speed="0.5" onclick="setEditorSpeed(0.5)">0.5x</button>
-                <button class="editor-speed-btn active" data-speed="1" onclick="setEditorSpeed(1)">1x</button>
-                <button class="editor-speed-btn" data-speed="1.5" onclick="setEditorSpeed(1.5)">1.5x</button>
-                <button class="editor-speed-btn" data-speed="2" onclick="setEditorSpeed(2)">2x</button>
-              </div>
-              <div class="editor-filter-group">
-                <button class="editor-filter-pill active" data-filter="all" onclick="setEditorFilter('all')">כל המהלכים</button>
-                <button class="editor-filter-pill" data-filter="offense" onclick="setEditorFilter('offense')">התקפה</button>
-                <button class="editor-filter-pill" data-filter="defense" onclick="setEditorFilter('defense')">הגנה</button>
-                <button class="editor-filter-pill" data-filter="transition" onclick="setEditorFilter('transition')">מעבר</button>
-              </div>
-            </div>
+      <div id="editor-content" class="hidden" style="display:flex;flex-direction:column;gap:16px">
+        <!-- Top controls (filter pills + speed) above the video -->
+        <div class="editor-top-controls">
+          <div class="editor-filter-group">
+            <button class="editor-filter-pill active" data-filter="all" onclick="setEditorFilter('all')">כל המהלכים</button>
+            <button class="editor-filter-pill" data-filter="offense" onclick="setEditorFilter('offense')">התקפה</button>
+            <button class="editor-filter-pill" data-filter="defense" onclick="setEditorFilter('defense')">הגנה</button>
+            <button class="editor-filter-pill" data-filter="transition" onclick="setEditorFilter('transition')">מעבר</button>
+          </div>
+          <div class="editor-speed-group">
+            <span style="color:var(--text2);font-size:12px">מהירות:</span>
+            <button class="editor-speed-btn" data-speed="0.5" onclick="setEditorSpeed(0.5)">0.5x</button>
+            <button class="editor-speed-btn active" data-speed="1" onclick="setEditorSpeed(1)">1x</button>
+            <button class="editor-speed-btn" data-speed="1.5" onclick="setEditorSpeed(1.5)">1.5x</button>
+            <button class="editor-speed-btn" data-speed="2" onclick="setEditorSpeed(2)">2x</button>
           </div>
         </div>
 
-        <div class="card editor-suggestions-card">
-          <div class="card-header">
-            <h3>רגעים שזוהו (<span id="editor-suggestions-count">0</span>)</h3>
+        <!-- Main video player -->
+        <div class="card" style="padding:12px">
+          <div class="editor-video-wrap" id="editor-video-container"></div>
+        </div>
+
+        <!-- Timeline below the video -->
+        <div class="editor-timeline-wrapper">
+          <div class="editor-timeline-track" id="editor-timeline-track">
+            <div class="editor-timeline-progress" id="editor-timeline-progress"></div>
           </div>
-          <div id="editor-suggestions-list" class="editor-suggestions-list"></div>
+          <div class="editor-timeline-times">
+            <span id="editor-time-current">0:00</span>
+            <span id="editor-time-duration">0:00</span>
+          </div>
+        </div>
+
+        <!-- Hidden preview iframe host (gets moved into the play card on hover) -->
+        <div id="editor-preview-container" style="display:none;width:100%;height:100%">
+          <div id="editor-preview-yt"></div>
+        </div>
+      </div>
+
+      <!-- Floating play card (rendered once, repositioned on hover) -->
+      <div class="editor-play-card" id="editor-play-card">
+        <div class="editor-play-card-preview"></div>
+        <div class="editor-play-card-content">
+          <div class="editor-play-card-header">
+            <span class="editor-play-card-time"></span>
+            <span class="editor-play-card-type"></span>
+          </div>
+          <div class="editor-play-card-label"></div>
+          <div class="editor-play-card-players"></div>
+          <div class="editor-play-card-note"></div>
         </div>
       </div>
 
@@ -1619,6 +1667,41 @@ let editorYtPlayer = null;
 let editorNotes = [];
 let editorAnalysisId = null;
 
+// Timeline state
+let editorVideoDuration = 0;
+let editorProgressInterval = null;
+let editorClusterThresholdSeconds = 3;
+let editorPreviewYt = null;
+let editorPreviewSeekTimeout = null;
+let editorPreviewVideo = null; // for HTML5 video preview
+let editorIsHtml5 = false;
+let editorTimelineClickWired = false;
+
+const SHAPE_BY_OUTCOME = {
+  made_2: 'circle-filled', made_3: 'circle-filled',
+  missed_2: 'circle-hollow', missed_3: 'circle-hollow', block: 'circle-hollow',
+  foul_drawn: 'triangle', steal: 'triangle', turnover: 'triangle',
+  defensive_stop: 'square',
+};
+const LANE_BY_TYPE = { offense: 0, transition: 1, defense: 2 };
+
+function getMarkerShape(play) {
+  const finish = (play.finish || play.outcome || '').toLowerCase();
+  return SHAPE_BY_OUTCOME[finish] || 'circle-filled';
+}
+
+function getMarkerLane(play) {
+  const t = (play.type || '').toLowerCase();
+  return LANE_BY_TYPE[t] !== undefined ? LANE_BY_TYPE[t] : 1;
+}
+
+function formatTime(seconds) {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function loadEditor(plays, videoUrl, analysisId) {
   if (!videoUrl) {
     alert('צריך URL של וידאו כדי לפתוח עורך');
@@ -1636,6 +1719,7 @@ function loadEditor(plays, videoUrl, analysisId) {
   editorPlays = plays || [];
   editorVideoUrl = videoUrl;
   editorActiveFilter = 'all';
+  editorVideoDuration = 0;
 
   // Switch to editor screen (replicate sidebar nav switch)
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -1651,18 +1735,32 @@ function loadEditor(plays, videoUrl, analysisId) {
   // Reset filter pills + speed buttons to defaults
   document.querySelectorAll('.editor-filter-pill').forEach(p => p.classList.toggle('active', p.dataset.filter === 'all'));
   document.querySelectorAll('.editor-speed-btn').forEach(b => b.classList.toggle('active', parseFloat(b.dataset.speed) === 1));
+  // Reset timeline UI
+  const trackEl = document.getElementById('editor-timeline-track');
+  if (trackEl) trackEl.querySelectorAll('.editor-timeline-marker').forEach(m => m.remove());
+  const progressEl = document.getElementById('editor-timeline-progress');
+  if (progressEl) progressEl.style.right = '0%';
+  const curEl = document.getElementById('editor-time-current');
+  if (curEl) curEl.textContent = '0:00';
+  const durEl = document.getElementById('editor-time-duration');
+  if (durEl) durEl.textContent = '0:00';
+  hidePlayCard();
 
   initEditorVideoPlayer(videoUrl, ytId);
-  renderEditorSuggestions();
+  setupTimelineClick();
+  startProgressTracking();
   loadEditorNotes(analysisId || null);
 }
 
 function initEditorVideoPlayer(videoUrl, videoId) {
   if (videoId) {
+    editorIsHtml5 = false;
     initEditorYouTubePlayer(videoId);
+    initPreviewYouTube(videoId);
     return;
   }
   // Backend-served HTML5 video — gives full programmatic seek + range scrubbing
+  editorIsHtml5 = true;
   const container = document.getElementById('editor-video-container');
   container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;object-fit:contain"></video>`;
   const v = document.getElementById('editor-html5-video');
@@ -1674,9 +1772,70 @@ function initEditorVideoPlayer(videoUrl, videoId) {
     pauseVideo: () => { try { v.pause(); } catch(_) {} },
     getCurrentTime: () => v.currentTime,
     getDuration: () => v.duration,
+    getPlayerState: () => v.paused ? 2 : 1,
     setPlaybackRate: (r) => { v.playbackRate = r; },
     destroy: () => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch(_) {} },
   };
+  initPreviewHtml5(videoUrl);
+}
+
+// Hidden YouTube preview player. Used by the hover card to show a frame
+// at the marker's timestamp. Muted, no controls. Survives across hovers
+// (we move its DOM node in/out of the card slot rather than recreating it).
+function initPreviewYouTube(videoId) {
+  const container = document.getElementById('editor-preview-container');
+  if (!container) return;
+  // Reattach to body if it was previously moved into a card and the card was
+  // re-rendered without it (e.g. screen switch).
+  if (container.parentElement !== document.body && !document.getElementById('screen-editor').contains(container)) {
+    document.body.appendChild(container);
+  }
+  container.innerHTML = '<div id="editor-preview-yt"></div>';
+  container.style.display = 'none';
+
+  const build = () => {
+    if (editorPreviewYt && editorPreviewYt.destroy) {
+      try { editorPreviewYt.destroy(); } catch(_) {}
+    }
+    editorPreviewYt = new YT.Player('editor-preview-yt', {
+      videoId: videoId,
+      width: '100%',
+      height: '100%',
+      playerVars: { controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, mute: 1, playsinline: 1 },
+      events: { onReady: () => { try { editorPreviewYt.mute(); editorPreviewYt.pauseVideo(); } catch(_) {} } },
+    });
+  };
+
+  if (typeof YT === 'undefined' || !YT.Player) {
+    let waited = 0;
+    const wait = setInterval(() => {
+      waited += 200;
+      if (typeof YT !== 'undefined' && YT.Player) {
+        clearInterval(wait);
+        build();
+      } else if (waited > 8000) {
+        clearInterval(wait);
+      }
+    }, 200);
+    return;
+  }
+  build();
+}
+
+// HTML5 preview video, kept as a JS reference and moved in/out of the
+// card preview slot on hover. Muted so multiple plays don't collide.
+function initPreviewHtml5(videoUrl) {
+  if (editorPreviewVideo) {
+    try { editorPreviewVideo.pause(); } catch(_) {}
+    editorPreviewVideo.remove();
+  }
+  const v = document.createElement('video');
+  v.src = videoUrl;
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'metadata';
+  v.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain';
+  editorPreviewVideo = v;
 }
 
 function initEditorYouTubePlayer(videoId) {
@@ -1723,49 +1882,216 @@ function initEditorYouTubePlayer(videoId) {
   buildPlayer();
 }
 
-function renderEditorSuggestions() {
-  const filtered = editorActiveFilter === 'all'
-    ? editorPlays
-    : editorPlays.filter(p => {
-        const t = (p.type || '').toLowerCase();
-        if (editorActiveFilter === 'offense') return t === 'offense';
-        if (editorActiveFilter === 'defense') return t === 'defense';
-        if (editorActiveFilter === 'transition') return t === 'transition';
-        return true;
-      });
-
-  const list = document.getElementById('editor-suggestions-list');
-  document.getElementById('editor-suggestions-count').textContent = filtered.length;
-
-  if (filtered.length === 0) {
-    list.innerHTML = '<div style="text-align:center;color:var(--text2);padding:24px">אין מהלכים בקטגוריה זו</div>';
-    return;
+function seekToTime(seconds) {
+  if (editorYtPlayer && typeof editorYtPlayer.seekTo === 'function') {
+    editorYtPlayer.seekTo(seconds, true);
   }
-
-  list.innerHTML = filtered.map((p, i) => {
-    const seekTime = parseTimeToSeconds(p.startTime || p.time);
-    const t = (p.type || '').toLowerCase();
-    const typeClass = t.includes('defense') ? 'defense' : t.includes('transition') ? 'transition' : 'offense';
-    const typeLabel = typeClass === 'offense' ? 'התקפה' : typeClass === 'defense' ? 'הגנה' : 'מעבר';
-    const timeDisplay = p.startTime || p.time || '';
-    return `<div class="editor-suggestion" data-index="${i}" data-time="${seekTime}" onclick="selectEditorSuggestion(this, ${seekTime})">
-      <div class="editor-suggestion-time">${timeDisplay}</div>
-      <div class="editor-suggestion-body">
-        <span class="play-type ${typeClass}">${typeLabel}</span>
-        <div class="editor-suggestion-label">${p.label || ''}</div>
-        <div class="editor-suggestion-players">${(p.players||[]).join(', ')}</div>
-      </div>
-    </div>`;
-  }).join('');
 }
 
-function selectEditorSuggestion(el, seekTime) {
-  document.querySelectorAll('.editor-suggestion').forEach(s => s.classList.remove('active'));
-  el.classList.add('active');
-  if (editorYtPlayer && typeof editorYtPlayer.seekTo === 'function') {
-    editorYtPlayer.seekTo(seekTime, true);
-    if (typeof editorYtPlayer.playVideo === 'function') editorYtPlayer.playVideo();
+function renderTimelineMarkers() {
+  const track = document.getElementById('editor-timeline-track');
+  if (!track) return;
+
+  // Clear existing markers (preserve the progress indicator div)
+  track.querySelectorAll('.editor-timeline-marker').forEach(m => m.remove());
+
+  if (!editorVideoDuration || editorVideoDuration === 0) return;
+
+  const filtered = editorActiveFilter === 'all'
+    ? editorPlays
+    : editorPlays.filter(p => (p.type || '').toLowerCase() === editorActiveFilter);
+
+  // Cluster markers within editorClusterThresholdSeconds when in the same lane.
+  // This prevents visual pileup when Gemini emits near-duplicate detections.
+  const sorted = [...filtered].sort((a, b) => parseTimeToSeconds(a.startTime || a.time) - parseTimeToSeconds(b.startTime || b.time));
+  const clusters = [];
+  let cur = null;
+  for (const play of sorted) {
+    const time = parseTimeToSeconds(play.startTime || play.time);
+    if (cur && time - cur.lastTime <= editorClusterThresholdSeconds && getMarkerLane(play) === getMarkerLane(cur.plays[0].play)) {
+      cur.plays.push({ play, time });
+      cur.lastTime = time;
+    } else {
+      cur = { startTime: time, lastTime: time, plays: [{ play, time }] };
+      clusters.push(cur);
+    }
   }
+
+  for (const cluster of clusters) {
+    const marker = document.createElement('div');
+    const pct = (cluster.startTime / editorVideoDuration) * 100;
+    const lane = getMarkerLane(cluster.plays[0].play);
+    const laneTop = `${(lane * 33.33) + 16.66}%`;
+    const type = (cluster.plays[0].play.type || '').toLowerCase() || 'offense';
+
+    marker.style.right = `${pct}%`;
+    marker.style.top = laneTop;
+    marker.style.transform = 'translate(50%, -50%)';
+    marker.dataset.time = cluster.startTime;
+
+    if (cluster.plays.length === 1) {
+      const play = cluster.plays[0].play;
+      marker.className = `editor-timeline-marker shape-${getMarkerShape(play)} type-${type}`;
+      marker.addEventListener('mouseenter', e => showPlayCard(e.currentTarget, play));
+    } else {
+      marker.className = `editor-timeline-marker cluster type-${type}`;
+      marker.textContent = String(cluster.plays.length);
+      marker.addEventListener('mouseenter', e => showClusterCard(e.currentTarget, cluster.plays));
+    }
+    marker.addEventListener('mouseleave', hidePlayCard);
+    marker.addEventListener('click', (e) => {
+      e.stopPropagation();
+      seekToTime(cluster.startTime);
+      if (editorYtPlayer && editorYtPlayer.playVideo) editorYtPlayer.playVideo();
+    });
+
+    track.appendChild(marker);
+  }
+}
+
+function showPlayCard(markerEl, play) {
+  const card = document.getElementById('editor-play-card');
+  if (!card) return;
+
+  const t = (play.type || '').toLowerCase();
+  const typeLabel = t === 'offense' ? 'התקפה' : t === 'defense' ? 'הגנה' : 'מעבר';
+  const timeRange = `${play.startTime || play.time || ''}${play.endTime ? ' - ' + play.endTime : ''}`;
+
+  card.querySelector('.editor-play-card-time').textContent = timeRange;
+  const typeEl = card.querySelector('.editor-play-card-type');
+  typeEl.textContent = typeLabel;
+  typeEl.className = `editor-play-card-type ${t}`;
+  card.querySelector('.editor-play-card-label').textContent = play.label || '';
+  card.querySelector('.editor-play-card-players').textContent = (play.players || []).join(', ');
+  card.querySelector('.editor-play-card-note').textContent = play.note || '';
+
+  // Mount preview into the card slot, then seek shortly after to avoid
+  // thrashing the player when the user sweeps across many markers.
+  const seekTime = parseTimeToSeconds(play.startTime || play.time);
+  const previewSlot = card.querySelector('.editor-play-card-preview');
+  previewSlot.innerHTML = '';
+  previewSlot.style.display = 'block';
+
+  if (editorIsHtml5 && editorPreviewVideo) {
+    previewSlot.appendChild(editorPreviewVideo);
+    clearTimeout(editorPreviewSeekTimeout);
+    editorPreviewSeekTimeout = setTimeout(() => {
+      try { editorPreviewVideo.currentTime = seekTime; } catch(_) {}
+    }, 150);
+  } else if (!editorIsHtml5) {
+    const previewContainer = document.getElementById('editor-preview-container');
+    if (previewContainer) {
+      previewContainer.style.display = 'block';
+      previewSlot.appendChild(previewContainer);
+      clearTimeout(editorPreviewSeekTimeout);
+      editorPreviewSeekTimeout = setTimeout(() => {
+        try {
+          if (editorPreviewYt && editorPreviewYt.seekTo) {
+            editorPreviewYt.seekTo(seekTime, true);
+            if (editorPreviewYt.pauseVideo) editorPreviewYt.pauseVideo();
+          }
+        } catch(_) {}
+      }, 150);
+    }
+  }
+
+  positionPlayCard(markerEl, card);
+}
+
+function showClusterCard(markerEl, plays) {
+  const card = document.getElementById('editor-play-card');
+  if (!card) return;
+
+  card.querySelector('.editor-play-card-time').textContent = `${plays.length} מהלכים קרובים`;
+  const typeEl = card.querySelector('.editor-play-card-type');
+  typeEl.textContent = '';
+  typeEl.className = 'editor-play-card-type';
+  card.querySelector('.editor-play-card-label').textContent = 'לחץ כדי לדלג לרגע הראשון';
+  card.querySelector('.editor-play-card-players').textContent = '';
+  card.querySelector('.editor-play-card-note').innerHTML = plays.map(p =>
+    `<div style="margin-bottom:4px"><span style="font-family:'DM Mono';color:var(--text2)">${escapeHtml(p.play.startTime || '')}</span> ${escapeHtml(p.play.label || '')}</div>`
+  ).join('');
+
+  // Hide preview for cluster cards (no single timestamp to scrub to)
+  const previewSlot = card.querySelector('.editor-play-card-preview');
+  previewSlot.innerHTML = '';
+  previewSlot.style.display = 'none';
+
+  positionPlayCard(markerEl, card);
+}
+
+function positionPlayCard(markerEl, card) {
+  card.classList.add('visible');
+  // Measure first
+  const markerRect = markerEl.getBoundingClientRect();
+  const cardWidth = card.offsetWidth || 360;
+  const cardHeight = card.offsetHeight || 200;
+
+  // Center horizontally over marker, clamp to viewport
+  let left = markerRect.left + (markerRect.width / 2) - (cardWidth / 2);
+  left = Math.max(8, Math.min(left, window.innerWidth - cardWidth - 8));
+
+  // Prefer above marker; fall back below if no room
+  let top = markerRect.top - cardHeight - 16;
+  if (top < 8) top = markerRect.bottom + 16;
+
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function hidePlayCard() {
+  const card = document.getElementById('editor-play-card');
+  if (!card) return;
+  card.classList.remove('visible');
+  // Park the YouTube preview container back on body so its iframe keeps
+  // running in the background (saves re-init on next hover).
+  const previewContainer = document.getElementById('editor-preview-container');
+  if (previewContainer && !editorIsHtml5 && previewContainer.parentElement !== document.body) {
+    document.body.appendChild(previewContainer);
+    previewContainer.style.display = 'none';
+  }
+}
+
+function startProgressTracking() {
+  if (editorProgressInterval) clearInterval(editorProgressInterval);
+  editorProgressInterval = setInterval(() => {
+    if (!editorYtPlayer || typeof editorYtPlayer.getCurrentTime !== 'function') return;
+    try {
+      const current = editorYtPlayer.getCurrentTime() || 0;
+      const duration = editorYtPlayer.getDuration ? (editorYtPlayer.getDuration() || 0) : 0;
+
+      if (duration && duration !== editorVideoDuration) {
+        editorVideoDuration = duration;
+        const durEl = document.getElementById('editor-time-duration');
+        if (durEl) durEl.textContent = formatTime(duration);
+        renderTimelineMarkers();
+      }
+
+      if (editorVideoDuration > 0) {
+        const pct = Math.max(0, Math.min(100, (current / editorVideoDuration) * 100));
+        const progress = document.getElementById('editor-timeline-progress');
+        if (progress) progress.style.right = `${pct}%`;
+        const curEl = document.getElementById('editor-time-current');
+        if (curEl) curEl.textContent = formatTime(current);
+      }
+    } catch(_) { /* player not ready */ }
+  }, 250);
+}
+
+function setupTimelineClick() {
+  const track = document.getElementById('editor-timeline-track');
+  if (!track || editorTimelineClickWired) return;
+  editorTimelineClickWired = true;
+  track.addEventListener('click', (e) => {
+    if (e.target.closest('.editor-timeline-marker')) return;
+    if (!editorVideoDuration) return;
+    const rect = track.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    // RTL: right side = 0:00, left side = end
+    const pct = 1 - (x / rect.width);
+    const seekTime = Math.max(0, Math.min(editorVideoDuration, pct * editorVideoDuration));
+    seekToTime(seekTime);
+  });
 }
 
 function setEditorFilter(filter) {
@@ -1773,8 +2099,56 @@ function setEditorFilter(filter) {
   document.querySelectorAll('.editor-filter-pill').forEach(p => {
     p.classList.toggle('active', p.dataset.filter === filter);
   });
-  renderEditorSuggestions();
+  renderTimelineMarkers();
 }
+
+function jumpToAdjacentMarker(direction) {
+  if (!editorYtPlayer || typeof editorYtPlayer.getCurrentTime !== 'function') return;
+  let currentTime = 0;
+  try { currentTime = editorYtPlayer.getCurrentTime() || 0; } catch(_) { return; }
+
+  const sorted = editorPlays
+    .map(p => ({ time: parseTimeToSeconds(p.startTime || p.time), play: p }))
+    .sort((a, b) => a.time - b.time);
+
+  if (direction > 0) {
+    const next = sorted.find(p => p.time > currentTime + 0.5);
+    if (next) {
+      seekToTime(next.time);
+      if (editorYtPlayer.playVideo) editorYtPlayer.playVideo();
+    }
+  } else {
+    const prev = [...sorted].reverse().find(p => p.time < currentTime - 0.5);
+    if (prev) {
+      seekToTime(prev.time);
+      if (editorYtPlayer.playVideo) editorYtPlayer.playVideo();
+    }
+  }
+}
+
+// Editor keyboard shortcuts. Active only while the editor screen is visible
+// and the user is not typing in a textarea/input (e.g. coach notes).
+document.addEventListener('keydown', (e) => {
+  const editor = document.getElementById('screen-editor');
+  if (!editor || !editor.classList.contains('active')) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+  if (e.code === 'Space') {
+    e.preventDefault();
+    try {
+      const state = editorYtPlayer && editorYtPlayer.getPlayerState ? editorYtPlayer.getPlayerState() : null;
+      if (state === 1 && editorYtPlayer.pauseVideo) editorYtPlayer.pauseVideo();
+      else if (editorYtPlayer && editorYtPlayer.playVideo) editorYtPlayer.playVideo();
+    } catch(_) {}
+  } else if (e.code === 'ArrowLeft') {
+    jumpToAdjacentMarker(-1);
+  } else if (e.code === 'ArrowRight') {
+    jumpToAdjacentMarker(1);
+  } else if (e.code === 'Escape') {
+    hidePlayCard();
+  }
+});
 
 function setEditorSpeed(speed) {
   if (editorYtPlayer && typeof editorYtPlayer.setPlaybackRate === 'function') {
