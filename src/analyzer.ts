@@ -1891,7 +1891,20 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 
         if (playType.includes('pull_up')) shotChart.pullUp++;
       });
-      console.log(`📊 Shot chart computed: paint=${shotChart.paint} midRange=${shotChart.midRange} corner3=${shotChart.corner3} aboveBreak3=${shotChart.aboveBreak3} pullUp=${shotChart.pullUp}`);
+      // Normalize the location buckets to percentages so the frontend's
+      // `${val}%` rendering and `width: ${val}%` bar fill display correctly.
+      // pullUp is counted independently (a mid-range pull-up counts in both
+      // midRange and pullUp), so it's normalized against the same denominator
+      // and remains its own dimension rather than part of the 100% sum.
+      const total = shotChart.paint + shotChart.midRange + shotChart.corner3 + shotChart.aboveBreak3 + shotChart.pullUp;
+      if (total > 0) {
+        shotChart.paint = Math.round((shotChart.paint / total) * 100);
+        shotChart.midRange = Math.round((shotChart.midRange / total) * 100);
+        shotChart.corner3 = Math.round((shotChart.corner3 / total) * 100);
+        shotChart.aboveBreak3 = Math.round((shotChart.aboveBreak3 / total) * 100);
+        shotChart.pullUp = Math.round((shotChart.pullUp / total) * 100);
+      }
+      console.log(`📊 Shot chart percentages: paint=${shotChart.paint}% midRange=${shotChart.midRange}% corner3=${shotChart.corner3}% aboveBreak3=${shotChart.aboveBreak3}% pullUp=${shotChart.pullUp}%`);
       return shotChart;
     })(),
   };
