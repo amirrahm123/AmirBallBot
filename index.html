@@ -241,6 +241,32 @@ textarea{resize:vertical;min-height:80px}
 .editor-note-edit-actions button.save{background:var(--accent);color:#000;border-color:var(--accent)}
 .editor-notes-empty{text-align:center;color:var(--text2);padding:20px;font-size:13px}
 .editor-notes-locked{text-align:center;color:var(--text3);padding:20px;font-size:13px;font-style:italic}
+
+/* === Saved Analyses page === */
+.saved-controls{display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.saved-search-input{flex:1;min-width:200px;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:14px;direction:rtl}
+.saved-search-input:focus{outline:none;border-color:var(--accent)}
+.saved-sort-select{padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:14px;cursor:pointer;direction:rtl}
+.saved-sort-select:focus{outline:none;border-color:var(--accent)}
+.saved-count{color:var(--text2);font-size:13px;font-weight:500}
+.saved-analyses-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
+.saved-analysis-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;transition:border-color .15s ease,transform .15s ease;display:flex;flex-direction:column;gap:16px}
+.saved-analysis-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.saved-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.saved-card-title-section{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.saved-card-team{margin:0;font-size:17px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.saved-card-date{font-size:12px;color:var(--text2)}
+.saved-card-badges{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.saved-badge{font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600;white-space:nowrap}
+.saved-badge-plays{background:rgba(0,229,160,0.12);color:var(--accent);border:1px solid rgba(0,229,160,0.3)}
+.saved-badge-focus{background:rgba(255,197,68,0.12);color:var(--yellow);border:1px solid rgba(255,197,68,0.3)}
+.saved-badge-notes{background:rgba(255,77,106,0.08);color:var(--text2);border:1px solid var(--border)}
+.saved-card-actions{display:flex;gap:8px;align-items:center}
+.saved-card-actions .btn-sm{padding:6px 12px;font-size:12px;flex:1;justify-content:center}
+.btn-icon-danger{background:transparent;border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:14px;transition:all .15s ease}
+.btn-icon-danger:hover{background:rgba(255,77,106,0.15);border-color:var(--red);color:var(--red)}
+.saved-empty-state{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text2)}
+.saved-empty-state-icon{font-size:48px;margin-bottom:16px;opacity:.5}
 </style>
 </head>
 <body>
@@ -569,11 +595,17 @@ textarea{resize:vertical;min-height:80px}
     <div class="screen" id="screen-saved">
       <div class="card">
         <div class="card-header"><h3>ניתוחים שמורים</h3></div>
-        <div id="saved-list" style="display:flex;flex-direction:column;gap:8px"></div>
-        <div id="saved-empty" style="text-align:center;padding:40px;color:var(--text3)">
-          <p style="font-size:36px;margin-bottom:12px">💾</p>
-          <p>אין ניתוחים שמורים עדיין</p>
+        <div class="saved-controls">
+          <input type="text" id="saved-search" class="saved-search-input" placeholder="חפש לפי שם קבוצה...">
+          <select id="saved-sort" class="saved-sort-select">
+            <option value="date-desc">החדש ביותר</option>
+            <option value="date-asc">הישן ביותר</option>
+            <option value="team-asc">קבוצה (א-ת)</option>
+            <option value="plays-desc">הכי הרבה מהלכים</option>
+          </select>
+          <span id="saved-count" class="saved-count">0 ניתוחים</span>
         </div>
+        <div id="saved-list" class="saved-analyses-list"></div>
       </div>
     </div>
 
@@ -1344,32 +1376,114 @@ document.getElementById('roster-confirm-btn').addEventListener('click', async ()
 });
 
 // === Saved Analyses ===
+let savedAnalysesCache = [];
+let savedSearchQuery = '';
+let savedSortMode = 'date-desc';
+
+function formatHebrewDate(isoDate) {
+  if (!isoDate) return '';
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return '';
+  const months = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const day = d.getDate();
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  return `${day} ב${month} ${year}, ${hours}:${mins}`;
+}
+
+function focusLabel(focus) {
+  const map = { offense: 'התקפה', defense: 'הגנה', transition: 'מעבר', all: 'הכל' };
+  return map[focus] || focus;
+}
+
 async function loadSavedAnalyses() {
   try {
     const res = await fetch(API + '/api/analyses');
-    const analyses = await res.json();
+    const data = await res.json();
+    savedAnalysesCache = Array.isArray(data) ? data : (data.analyses || []);
+  } catch (e) {
+    console.error('loadSavedAnalyses error:', e);
+    savedAnalysesCache = [];
     const list = document.getElementById('saved-list');
-    const empty = document.getElementById('saved-empty');
-    if (!analyses.length) {
-      list.innerHTML = '';
-      empty.classList.remove('hidden');
-      return;
-    }
-    empty.classList.add('hidden');
-    list.innerHTML = analyses.map(a => {
-      const date = new Date(a.createdAt);
-      const formatted = `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}`;
-      return `<div class="play-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div style="cursor:pointer;flex:1" onclick="loadSavedAnalysis('${a._id}')">
-          <div style="font-weight:600;font-size:14px">${a.teamName || 'לא ידוע'}</div>
-          <div style="font-size:12px;color:var(--text3)">${formatted} &middot; ${a.playCount || 0} מהלכים &middot; ${a.focus || 'all'}</div>
-        </div>
-        <button class="btn btn-sm" onclick="openSavedInEditor('${a._id}')" style="padding:4px 10px;font-size:12px">🎬 פתח בעורך</button>
-        <button class="btn btn-sm" onclick="deleteSavedAnalysis('${a._id}')" style="padding:2px 6px;font-size:12px">🗑️</button>
-      </div>`;
-    }).join('');
-  } catch (e) { console.error('loadSavedAnalyses error:', e); }
+    if (list) list.innerHTML = '<div class="saved-empty-state"><div class="saved-empty-state-icon">⚠️</div><div>שגיאה בטעינת הניתוחים</div></div>';
+    return;
+  }
+  renderSavedAnalyses();
 }
+
+function renderSavedAnalyses() {
+  const list = document.getElementById('saved-list');
+  const countEl = document.getElementById('saved-count');
+  if (!list) return;
+
+  let filtered = savedAnalysesCache;
+  if (savedSearchQuery) {
+    const q = savedSearchQuery.toLowerCase();
+    filtered = filtered.filter(a => (a.teamName || '').toLowerCase().includes(q));
+  }
+  filtered = [...filtered].sort((a, b) => {
+    switch (savedSortMode) {
+      case 'date-desc': return new Date(b.createdAt) - new Date(a.createdAt);
+      case 'date-asc':  return new Date(a.createdAt) - new Date(b.createdAt);
+      case 'team-asc':  return (a.teamName || '').localeCompare(b.teamName || '', 'he');
+      case 'plays-desc': return (b.playCount || (b.plays && b.plays.length) || 0) - (a.playCount || (a.plays && a.plays.length) || 0);
+      default: return 0;
+    }
+  });
+
+  if (countEl) {
+    const total = savedAnalysesCache.length;
+    const showing = filtered.length;
+    countEl.textContent = showing === total ? `${total} ניתוחים` : `${showing} מתוך ${total}`;
+  }
+
+  if (filtered.length === 0) {
+    if (savedAnalysesCache.length === 0) {
+      list.innerHTML = '<div class="saved-empty-state"><div class="saved-empty-state-icon">📭</div><div>אין ניתוחים שמורים עדיין</div><div style="margin-top:8px;font-size:13px">העלה משחק כדי שיופיע כאן</div></div>';
+    } else {
+      list.innerHTML = '<div class="saved-empty-state"><div class="saved-empty-state-icon">🔍</div><div>לא נמצאו ניתוחים תואמים</div></div>';
+    }
+    return;
+  }
+
+  list.innerHTML = filtered.map(a => {
+    const teamName = escapeHtml(a.teamName || 'ללא שם');
+    const playCount = a.playCount || (a.plays && a.plays.length) || 0;
+    const notesCount = (a.coachNotes && a.coachNotes.length) || 0;
+    const focusBadge = (a.focus && a.focus !== 'all')
+      ? `<span class="saved-badge saved-badge-focus">${escapeHtml(focusLabel(a.focus))}</span>`
+      : '';
+    const notesBadge = notesCount > 0
+      ? `<span class="saved-badge saved-badge-notes">📝 ${notesCount}</span>`
+      : '';
+    return `
+      <div class="saved-analysis-card" data-id="${a._id}">
+        <div class="saved-card-header">
+          <div class="saved-card-title-section">
+            <h3 class="saved-card-team">${teamName}</h3>
+            <span class="saved-card-date">${formatHebrewDate(a.createdAt)}</span>
+          </div>
+          <div class="saved-card-badges">
+            <span class="saved-badge saved-badge-plays">${playCount} מהלכים</span>
+            ${focusBadge}
+            ${notesBadge}
+          </div>
+        </div>
+        <div class="saved-card-actions">
+          <button class="btn btn-primary btn-sm" onclick="openSavedInEditor('${a._id}')">🎬 פתח בעורך</button>
+          <button class="btn btn-secondary btn-sm" onclick="viewSavedAnalysis('${a._id}')">👁️ צפה בניתוח</button>
+          <button class="btn-icon-danger" onclick="deleteSavedAnalysis('${a._id}')" title="מחק">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Alias for the card "צפה בניתוח" button — keeps the existing loader function
+// authoritative so navigation/render behavior stays in one place.
+function viewSavedAnalysis(id) { return loadSavedAnalysis(id); }
 
 async function loadSavedAnalysis(id) {
   try {
@@ -1389,12 +1503,34 @@ async function loadSavedAnalysis(id) {
 }
 
 async function deleteSavedAnalysis(id) {
-  if (!confirm('למחוק את הניתוח?')) return;
+  if (!confirm('למחוק את הניתוח? פעולה זו לא ניתנת לביטול.')) return;
   try {
-    await fetch(API + '/api/analyses/' + id, { method: 'DELETE' });
-    loadSavedAnalyses();
-  } catch (e) { console.error('deleteSavedAnalysis error:', e); }
+    const res = await fetch(API + '/api/analyses/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete');
+    savedAnalysesCache = savedAnalysesCache.filter(a => a._id !== id);
+    renderSavedAnalyses();
+  } catch (e) {
+    console.error('deleteSavedAnalysis error:', e);
+    alert('שגיאה במחיקה');
+  }
 }
+
+(function wireSavedAnalysesControls() {
+  const searchInput = document.getElementById('saved-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      savedSearchQuery = e.target.value.trim();
+      renderSavedAnalyses();
+    });
+  }
+  const sortSelect = document.getElementById('saved-sort');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      savedSortMode = e.target.value;
+      renderSavedAnalyses();
+    });
+  }
+})();
 
 // Load saved analyses when navigating to the screen
 document.querySelector('[data-screen="saved"]').addEventListener('click', () => loadSavedAnalyses());

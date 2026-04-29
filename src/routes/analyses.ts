@@ -18,7 +18,7 @@ router.get('/', async (_req: Request, res: Response) => {
   try {
     const analyses = await Analysis.find()
       .sort({ createdAt: -1 })
-      .select('_id teamName focus playCount createdAt');
+      .select('_id teamName focus playCount createdAt coachNotes');
     res.json(analyses);
   } catch (err: any) {
     console.error('❌ שגיאה בטעינת ניתוחים:', err);
