@@ -1428,12 +1428,15 @@ let editorYtPlayer = null;
 
 function loadEditor(plays, videoUrl) {
   if (!videoUrl) {
-    alert('צריך URL של YouTube כדי לפתוח עורך');
+    alert('צריך URL של וידאו כדי לפתוח עורך');
     return;
   }
-  const ytId = extractYouTubeId(videoUrl);
-  if (!ytId) {
-    alert('העורך תומך רק בקישורי YouTube. אנא העלה את המשחק ל-YouTube כסרטון לא רשום.');
+
+  const isBackendVideo = videoUrl.includes('/api/video/');
+  const ytId = isBackendVideo ? null : extractYouTubeId(videoUrl);
+
+  if (!isBackendVideo && !ytId) {
+    alert('העורך תומך בקישורי YouTube או בווידאו ששמור בשרת. אנא העלה את המשחק או ספק קישור YouTube.');
     return;
   }
 
@@ -1456,8 +1459,30 @@ function loadEditor(plays, videoUrl) {
   document.querySelectorAll('.editor-filter-pill').forEach(p => p.classList.toggle('active', p.dataset.filter === 'all'));
   document.querySelectorAll('.editor-speed-btn').forEach(b => b.classList.toggle('active', parseFloat(b.dataset.speed) === 1));
 
-  initEditorYouTubePlayer(ytId);
+  initEditorVideoPlayer(videoUrl, ytId);
   renderEditorSuggestions();
+}
+
+function initEditorVideoPlayer(videoUrl, videoId) {
+  if (videoId) {
+    initEditorYouTubePlayer(videoId);
+    return;
+  }
+  // Backend-served HTML5 video — gives full programmatic seek + range scrubbing
+  const container = document.getElementById('editor-video-container');
+  container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="width:100%;height:100%;background:#000;display:block"></video>`;
+  const v = document.getElementById('editor-html5-video');
+  // Wrap the <video> element in the same shape the rest of the editor uses
+  // (seekTo/playVideo/setPlaybackRate) so callers don't have to branch.
+  editorYtPlayer = {
+    seekTo: (s) => { try { v.currentTime = s; } catch(_) {} },
+    playVideo: () => { try { v.play(); } catch(_) {} },
+    pauseVideo: () => { try { v.pause(); } catch(_) {} },
+    getCurrentTime: () => v.currentTime,
+    getDuration: () => v.duration,
+    setPlaybackRate: (r) => { v.playbackRate = r; },
+    destroy: () => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch(_) {} },
+  };
 }
 
 function initEditorYouTubePlayer(videoId) {
@@ -1577,16 +1602,21 @@ function goBackFromEditor() {
 
 function openCurrentInEditor() {
   const plays = (currentAnalysis && currentAnalysis.plays) || [];
-  loadEditor(plays, currentVideoUrl);
+  // Prefer backend-served video (full seek control) over the user-pasted URL.
+  const url = (currentAnalysis && currentAnalysis.videoUrl) || currentVideoUrl;
+  loadEditor(plays, url);
 }
 
 function openSavedInEditor(id) {
-  const url = prompt('הדבק קישור YouTube של המשחק:');
-  if (!url) return;
   fetch(`${API}/api/analyses/${id}`)
     .then(r => r.json())
     .then(data => {
       if (data.error) throw new Error(data.error);
+      let url = data.videoUrl || '';
+      if (!url) {
+        url = prompt('לא נמצא וידאו שמור. הדבק קישור YouTube של המשחק:') || '';
+      }
+      if (!url) return;
       loadEditor(data.plays || [], url);
     })
     .catch(err => { console.error(err); alert('שגיאה בטעינה'); });

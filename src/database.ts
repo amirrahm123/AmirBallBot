@@ -121,6 +121,7 @@ const AnalysisSchema = new mongoose.Schema({
   plays: Array,
   insights: Array,
   playCount: Number,
+  videoUrl: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
 });
 export const Analysis = mongoose.model('Analysis', AnalysisSchema);

@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
-import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile, ProgressCb, AnalysisResult } from '../analyzer';
+import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile, ProgressCb, AnalysisResult, VIDEOS_DIR, ensureVideosDir } from '../analyzer';
 import { Player, Analysis, Job } from '../database';
 import { GoogleGenAI, FileState } from '@google/genai';
 
@@ -25,7 +25,7 @@ type AnalyzeInput = {
   fileOriginalName?: string;
 };
 
-async function runAnalysis(input: AnalyzeInput, roster: string, onProgress: ProgressCb): Promise<AnalysisResult> {
+async function runAnalysis(input: AnalyzeInput, roster: string, onProgress: ProgressCb, persistPath?: string): Promise<AnalysisResult> {
   const { youtubeUrl, geminiFileUri, context, focus, teamName, jerseyColor, opponentJerseyColor, filePath, fileOriginalName } = input;
 
   if (filePath) {
@@ -34,14 +34,14 @@ async function runAnalysis(input: AnalyzeInput, roster: string, onProgress: Prog
     if (IMAGE_EXTS.includes(ext)) {
       return analyzeImage(filePath, context, focus, teamName, roster);
     }
-    return analyzeVideo(filePath, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress);
+    return analyzeVideo(filePath, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress, persistPath);
   }
   if (geminiFileUri) {
     console.log('📡 Using pre-uploaded Gemini file');
     return analyzeGeminiFile(geminiFileUri, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress);
   }
   if (youtubeUrl) {
-    return analyzeYouTube(youtubeUrl, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress);
+    return analyzeYouTube(youtubeUrl, context, focus, teamName, roster, jerseyColor, opponentJerseyColor, onProgress, persistPath);
   }
   throw new Error('נדרש קובץ וידאו או קישור YouTube');
 }
@@ -69,7 +69,15 @@ async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
       { $set: { status: 'processing', progress: 5, progressMessage: 'Starting analysis...', updatedAt: new Date() } },
     );
 
-    const result = await runAnalysis(input, roster, makeProgress());
+    ensureVideosDir();
+    const persistPath = path.join(VIDEOS_DIR, `${jobId}.mp4`);
+    const result = await runAnalysis(input, roster, makeProgress(), persistPath);
+
+    if (fs.existsSync(persistPath)) {
+      const baseUrl = (process.env.BASE_URL || 'https://amirballbot-production.up.railway.app').replace(/\/+$/, '');
+      result.videoUrl = `${baseUrl}/api/video/${jobId}.mp4`;
+      console.log(`🎬 Video served at: ${result.videoUrl}`);
+    }
 
     try {
       const savedAnalysis = await Analysis.create({
@@ -78,6 +86,7 @@ async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
         plays: result.plays,
         insights: result.insights,
         playCount: result.plays?.length || 0,
+        videoUrl: result.videoUrl || '',
       });
       (result as any).analysisId = savedAnalysis._id;
       console.log(`💾 Analysis saved: ${savedAnalysis._id}`);

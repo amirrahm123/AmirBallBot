@@ -103,6 +103,60 @@ export interface AnalysisResult {
   plays: { startTime: string; endTime: string; time?: string; type: string; label: string; note: string; players: string[] }[];
   insights: { type: 'good' | 'warn' | 'bad'; title: string; body: string }[];
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
+  videoUrl?: string;
+}
+
+// Persistent storage for analyzed videos so the editor can stream them.
+// Override with VIDEOS_DIR env var if the deploy uses a mounted volume.
+export const VIDEOS_DIR = process.env.VIDEOS_DIR || path.join('/app', 'videos');
+
+export function ensureVideosDir(): void {
+  try {
+    if (!fs.existsSync(VIDEOS_DIR)) {
+      fs.mkdirSync(VIDEOS_DIR, { recursive: true });
+      console.log(`📁 Created videos dir: ${VIDEOS_DIR}`);
+    }
+  } catch (err) {
+    console.warn(`⚠️ Could not create videos dir at ${VIDEOS_DIR}:`, err);
+  }
+}
+
+/** Delete videos in VIDEOS_DIR older than 7 days. Safe to call at startup. */
+export function cleanupOldVideos(): void {
+  if (!fs.existsSync(VIDEOS_DIR)) return;
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  let deleted = 0;
+  try {
+    for (const f of fs.readdirSync(VIDEOS_DIR)) {
+      const filePath = path.join(VIDEOS_DIR, f);
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > SEVEN_DAYS) {
+          fs.unlinkSync(filePath);
+          console.log(`🗑️ Deleted old video: ${f}`);
+          deleted++;
+        }
+      } catch (e) {
+        console.warn(`⚠️ cleanupOldVideos: failed on ${f}:`, e);
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ cleanupOldVideos failed:', err);
+  }
+  if (deleted > 0) console.log(`🧹 Cleaned up ${deleted} old video(s)`);
+}
+
+function persistVideoFile(srcPath: string, persistPath: string): void {
+  try {
+    const dir = path.dirname(persistPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(srcPath, persistPath);
+    const sz = fs.statSync(persistPath).size;
+    console.log(`💾 Persisted video → ${persistPath} (${(sz / 1024 / 1024).toFixed(1)}MB)`);
+  } catch (err) {
+    console.warn(`⚠️ Failed to persist video to ${persistPath}:`, err);
+  }
 }
 
 export type ProgressCb = (pct: number, msg: string) => void;
@@ -1824,7 +1878,7 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 // ============================================================
 
 /** Analyze YouTube — download → Gemini → Claude */
-export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb): Promise<AnalysisResult> {
+export async function analyzeYouTube(url: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb, persistPath?: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== YOUTUBE ANALYSIS PIPELINE ==========');
   console.log(`   URL: ${url}`);
   console.log(`   Focus: ${focus}`);
@@ -1835,6 +1889,7 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 
   try {
     const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor, onProgress);
+    if (persistPath) persistVideoFile(videoPath, persistPath);
     console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
     return result;
   } finally {
@@ -1845,10 +1900,11 @@ export async function analyzeYouTube(url: string, context: string, focus: string
 }
 
 /** Analyze uploaded video file */
-export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb): Promise<AnalysisResult> {
+export async function analyzeVideo(videoPath: string, context: string, focus: string, teamName = '', roster = '', jerseyColor = '', opponentJerseyColor = '', onProgress?: ProgressCb, persistPath?: string): Promise<AnalysisResult> {
   console.log('\n🏀 ========== VIDEO ANALYSIS PIPELINE ==========');
 
   const result = await runVideoPipeline(videoPath, context, focus, teamName, roster, undefined, jerseyColor, opponentJerseyColor, onProgress);
+  if (persistPath) persistVideoFile(videoPath, persistPath);
   console.log('🏀 ========== PIPELINE COMPLETE ==========\n');
   return result;
 }

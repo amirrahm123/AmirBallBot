@@ -2,12 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './database';
+import { ensureVideosDir, cleanupOldVideos } from './analyzer';
 import analyzeRouter, { jobRouter } from './routes/analyze';
 import chatRouter from './routes/chat';
 import playersRouter from './routes/players';
 import knowledgeRouter from './routes/knowledge';
 import analysesRouter from './routes/analyses';
 import verifyRouter from './routes/verify';
+import videoRouter from './routes/video';
 
 dotenv.config();
 
@@ -41,11 +43,14 @@ app.use('/api/players', playersRouter);
 app.use('/api/knowledge', knowledgeRouter);
 app.use('/api/analyses', analysesRouter);
 app.use('/api/verify', verifyRouter);
+app.use('/api/video', videoRouter);
 console.log('✅ Routes registered');
 
 // Start server
 async function start() {
   await connectDB();
+  ensureVideosDir();
+  cleanupOldVideos();
   app.listen(PORT, () => {
     console.log(`🏀 AmirBallBot API running on port ${PORT}`);
   });
