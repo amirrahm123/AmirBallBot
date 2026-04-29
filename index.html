@@ -291,6 +291,63 @@ textarea{resize:vertical;min-height:80px}
 .btn-icon-danger:hover{background:rgba(255,77,106,0.15);border-color:var(--red);color:var(--red)}
 .saved-empty-state{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text2)}
 .saved-empty-state-icon{font-size:48px;margin-bottom:16px;opacity:.5}
+
+/* === Analysis loading: pipeline stages + time remaining === */
+.analysis-stages{display:flex;flex-direction:column;gap:12px;margin:24px auto 0;padding:20px;background:var(--bg2);border-radius:var(--radius);max-width:480px;border:1px solid var(--border)}
+.analysis-stage{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text2);transition:color .3s ease;text-align:right}
+.analysis-stage.completed{color:var(--text)}
+.analysis-stage.current{color:var(--accent);font-weight:600}
+.analysis-stage-icon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);font-size:12px;flex-shrink:0}
+.analysis-stage.completed .analysis-stage-icon{background:var(--accent);color:#000;border-color:var(--accent)}
+.analysis-stage.current .analysis-stage-icon{background:var(--bg3);border-color:var(--accent);animation:stage-spin 1.5s linear infinite}
+@keyframes stage-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.analysis-time-remaining{margin:16px auto 0;font-size:13px;color:var(--text2);text-align:center;max-width:480px}
+
+/* === Editor video error overlay === */
+.editor-video-error{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg2);padding:40px 20px;color:var(--text)}
+.editor-video-error-icon{font-size:64px;opacity:.4;margin-bottom:16px}
+.editor-video-error h3{margin:0 0 12px 0;color:var(--text)}
+.editor-video-error p{color:var(--text2);max-width:400px;margin:0 0 8px 0;line-height:1.5}
+.editor-video-error-hint{font-size:13px;margin-top:12px;color:var(--text2);opacity:.8}
+
+/* === Editor header with metadata === */
+.editor-header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.editor-header-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.editor-header-info h2{margin:0;font-size:20px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.editor-header-meta{display:flex;gap:8px;font-size:13px;color:var(--text2);flex-wrap:wrap}
+.editor-header-divider{opacity:.5}
+.editor-header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+/* === Editor keyboard shortcuts hint === */
+.editor-shortcuts-hint{position:relative;display:inline-block}
+.editor-shortcuts-trigger{background:var(--bg3);border:1px solid var(--border);color:var(--text2);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .15s ease;font-family:inherit}
+.editor-shortcuts-trigger:hover{color:var(--text);border-color:var(--accent)}
+.editor-shortcuts-tooltip{position:absolute;top:40px;left:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;width:220px;display:none;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.3);font-size:12px;direction:rtl;text-align:right}
+.editor-shortcuts-trigger:hover + .editor-shortcuts-tooltip,.editor-shortcuts-tooltip:hover{display:block}
+.editor-shortcuts-tooltip h4{margin:0 0 8px 0;font-size:13px;color:var(--text)}
+.editor-shortcuts-tooltip > div{display:flex;justify-content:space-between;margin-bottom:4px;color:var(--text2)}
+.editor-shortcuts-tooltip kbd{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text)}
+
+/* === Submit button spinner === */
+.btn-spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,0,0,0.2);border-top-color:#000;border-radius:50%;animation:stage-spin .8s linear infinite;margin-left:6px;vertical-align:middle}
+
+/* === Mobile (<768px): sidebar -> bottom nav, single-column adjustments === */
+@media(max-width:768px){
+  body{flex-direction:column}
+  .sidebar{position:fixed;bottom:0;top:auto;left:0;right:0;width:100%;height:60px;flex-direction:row;border-left:none;border-top:1px solid var(--border);z-index:100;padding:0;gap:0;justify-content:space-around;align-items:center}
+  .sidebar .logo{display:none}
+  .sidebar-bottom{margin-top:0;flex-direction:row}
+  .nav-btn{flex:1;min-width:0;padding:8px 4px;font-size:18px}
+  .main{margin-bottom:60px}
+  .content{padding:16px}
+  .editor-top-controls{flex-direction:column;align-items:stretch}
+  .editor-filter-group,.editor-speed-group{flex-wrap:wrap;justify-content:center}
+  .saved-analyses-list{grid-template-columns:1fr}
+  .saved-card-actions{flex-wrap:wrap}
+  .editor-notes-panel{width:calc(100vw - 32px);left:16px;right:16px;bottom:76px}
+  .editor-play-card{width:calc(100vw - 32px);max-width:360px}
+  .editor-shortcuts-tooltip{left:auto;right:0}
+}
 </style>
 </head>
 <body>
@@ -425,15 +482,16 @@ textarea{resize:vertical;min-height:80px}
     <div class="screen" id="screen-analysis">
       <!-- Processing state -->
       <div id="analysis-processing" class="processing hidden">
-        <div class="spinner"></div>
         <h3>מנתח את המשחק...</h3>
-        <p style="color:var(--text3);font-size:14px;margin-top:8px">זה יכול לקחת 1-3 דקות</p>
-        <div class="steps">
-          <div class="step active" id="step-upload"><span class="step-icon">⏳</span> מעלה קבצים</div>
-          <div class="step" id="step-frames"><span class="step-icon">⏳</span> מחלץ פריימים</div>
-          <div class="step" id="step-ai"><span class="step-icon">⏳</span> Claude מנתח</div>
-          <div class="step" id="step-done"><span class="step-icon">⏳</span> מכין דו״ח</div>
+        <p id="analysis-status-msg" style="color:var(--text3);font-size:14px;margin-top:8px">זה יכול לקחת 8-10 דקות</p>
+        <div class="analysis-stages" id="analysis-stages">
+          <div class="analysis-stage" data-stage="0"><span class="analysis-stage-icon" data-icon>⚪</span><span data-label>הורדת הסרטון</span></div>
+          <div class="analysis-stage" data-stage="1"><span class="analysis-stage-icon" data-icon>⚪</span><span data-label>זיהוי רגעים מעניינים</span></div>
+          <div class="analysis-stage" data-stage="2"><span class="analysis-stage-icon" data-icon>⚪</span><span data-label>ניתוח כל מהלך</span></div>
+          <div class="analysis-stage" data-stage="3"><span class="analysis-stage-icon" data-icon>⚪</span><span data-label>העשרה בעברית</span></div>
+          <div class="analysis-stage" data-stage="4"><span class="analysis-stage-icon" data-icon>⚪</span><span data-label>ייצור תובנות</span></div>
         </div>
+        <div id="analysis-time-remaining" class="analysis-time-remaining"></div>
       </div>
 
       <!-- Results state -->
@@ -489,9 +547,31 @@ textarea{resize:vertical;min-height:80px}
     <!-- Editor Screen -->
     <div class="screen" id="screen-editor">
       <div class="card">
-        <div class="editor-header-row">
-          <h3>עורך וידאו</h3>
-          <button class="btn btn-secondary btn-sm" onclick="goBackFromEditor()">← חזור לניתוח</button>
+        <div class="editor-header">
+          <div class="editor-header-info">
+            <h2 id="editor-team-name">עורך וידאו</h2>
+            <div class="editor-header-meta">
+              <span id="editor-analysis-date"></span>
+              <span class="editor-header-divider" id="editor-meta-div-1" style="display:none">·</span>
+              <span><span id="editor-plays-count">0</span> מהלכים</span>
+              <span class="editor-header-divider">·</span>
+              <span><span id="editor-notes-count-header">0</span> הערות</span>
+            </div>
+          </div>
+          <div class="editor-header-actions">
+            <div class="editor-shortcuts-hint">
+              <button class="editor-shortcuts-trigger" type="button" title="קיצורי מקלדת" aria-label="קיצורי מקלדת">⌨</button>
+              <div class="editor-shortcuts-tooltip">
+                <h4>קיצורי מקלדת</h4>
+                <div><span>נגן/השהה</span><kbd>רווח</kbd></div>
+                <div><span>מהלך הבא</span><kbd>←</kbd></div>
+                <div><span>מהלך קודם</span><kbd>→</kbd></div>
+                <div><span>סגור כרטיס</span><kbd>Esc</kbd></div>
+                <div><span>שמור הערה</span><kbd>Ctrl+Enter</kbd></div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="goBackFromEditor()">← חזור לניתוח</button>
+          </div>
         </div>
       </div>
 
@@ -779,6 +859,57 @@ async function uploadToGemini(file) {
   });
 }
 
+// === Analysis loading: pipeline stage detection + time remaining ===
+// Stage map (0-4) inferred from progressMessage keywords and percent.
+// Falls back on percent buckets when message doesn't match known keywords.
+function getCurrentStage(progressMessage, progress) {
+  const m = (progressMessage || '').toLowerCase();
+  if (/insight|תובנ/.test(m)) return 4;
+  if (/enrich|claude|העשר|הברק|haiku|דייק|מכניק/.test(m)) return 3;
+  if (/clip|קליפ|מנתח/.test(m)) return 2;
+  if (/detect|זיהוי|רגעים|frame|פריים|מחלץ/.test(m)) return 1;
+  if (/download|מוריד|upload|מעל/.test(m)) return 0;
+  // Percent fallback when message doesn't match
+  if (progress >= 95) return 4;
+  if (progress >= 85) return 3;
+  if (progress >= 30) return 2;
+  if (progress >= 10) return 1;
+  return 0;
+}
+
+function renderAnalysisStages(stage, progressMessage) {
+  const stages = document.querySelectorAll('#analysis-stages .analysis-stage');
+  stages.forEach((el, i) => {
+    el.classList.remove('completed', 'current');
+    const icon = el.querySelector('[data-icon]');
+    const labelEl = el.querySelector('[data-label]');
+    if (i < stage) {
+      el.classList.add('completed');
+      if (icon) icon.textContent = '✓';
+    } else if (i === stage) {
+      el.classList.add('current');
+      if (icon) icon.textContent = '⏳';
+      // Show clip progress (e.g. "8/12") inside stage 2 if message has it
+      if (i === 2 && labelEl) {
+        const m = (progressMessage || '').match(/(\d+)\s*(?:מתוך|of|\/)\s*(\d+)/);
+        labelEl.textContent = m ? `ניתוח כל מהלך (${m[1]}/${m[2]})` : 'ניתוח כל מהלך';
+      }
+    } else {
+      if (icon) icon.textContent = '⚪';
+    }
+  });
+}
+
+function formatTimeRemaining(elapsedMs, progressPct) {
+  if (progressPct <= 1 || elapsedMs < 5000) return '';
+  const totalEstimated = elapsedMs / (progressPct / 100);
+  const remainingMs = Math.max(0, totalEstimated - elapsedMs);
+  const remainingSec = Math.round(remainingMs / 1000);
+  if (remainingSec < 60) return 'נותרו פחות מדקה';
+  const mins = Math.round(remainingSec / 60);
+  return `נותרו כ-${mins} דקות`;
+}
+
 // === Analyze ===
 document.getElementById('analyze-btn').addEventListener('click', async () => {
   const file = fileInput.files[0];
@@ -805,22 +936,20 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   document.getElementById('analysis-results').classList.add('hidden');
   document.getElementById('analysis-empty').classList.add('hidden');
 
-  // Animate steps
-  const steps = ['step-upload','step-frames','step-ai','step-done'];
-  let currentStep = 0;
-  const stepInterval = setInterval(() => {
-    if (currentStep > 0) {
-      const prev = document.getElementById(steps[currentStep-1]);
-      prev.classList.remove('active'); prev.classList.add('done');
-      prev.querySelector('.step-icon').textContent = '✅';
-    }
-    if (currentStep < steps.length) {
-      const cur = document.getElementById(steps[currentStep]);
-      cur.classList.add('active');
-      cur.querySelector('.step-icon').textContent = '⏳';
-      currentStep++;
-    }
-  }, 2000);
+  // Reset stages and start the elapsed-time clock for ETA computation
+  renderAnalysisStages(0, '');
+  const analysisStartedAt = Date.now();
+  const timeEl = document.getElementById('analysis-time-remaining');
+  if (timeEl) timeEl.textContent = '';
+  // Submit button spinner + disabled while we wait for the 202 response
+  const submitBtn = document.getElementById('analyze-btn');
+  const submitOriginalHtml = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="btn-spinner"></span> מתחיל ניתוח...';
+  }
+  // Stub stepInterval kept for the no-op clearInterval calls in catch/finally
+  const stepInterval = 0;
 
   try {
     const formData = new FormData();
@@ -852,8 +981,8 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
 
-    const statusEl = document.querySelector('#analysis-processing p');
-    statusEl.textContent = isVideoFile ? 'מכין ניתוח...' : 'מוריד וידאו...';
+    const statusEl = document.getElementById('analysis-status-msg');
+    if (statusEl) statusEl.textContent = isVideoFile ? 'מכין ניתוח...' : 'מוריד וידאו...';
 
     try {
       // Step 1: create job
@@ -868,6 +997,12 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       }
       const jobId = createData.jobId;
       if (!jobId) throw new Error('לא התקבל מזהה עבודה מהשרת');
+      // Once job is accepted, restore the submit button so it's ready for the
+      // next analysis after this run completes/fails.
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = submitOriginalHtml;
+      }
 
       // Step 2: poll every 5 seconds until done/failed
       const POLL_MS = 5000;
@@ -897,7 +1032,10 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
         const pct = typeof job.progress === 'number' ? Math.max(0, Math.min(100, job.progress)) : 0;
         const msg = job.progressMessage || 'מעבד...';
-        statusEl.textContent = `${pct}% — ${msg}`;
+        if (statusEl) statusEl.textContent = msg;
+        const stage = getCurrentStage(msg, pct);
+        renderAnalysisStages(stage, msg);
+        if (timeEl) timeEl.textContent = formatTimeRemaining(Date.now() - analysisStartedAt, pct);
 
         if (job.status === 'done') { finalJob = job; break; }
         if (job.status === 'failed') {
@@ -917,6 +1055,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
     } finally {
       clearTimeout(timeout);
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitOriginalHtml; }
     }
   } catch (outerErr) {
     console.error('Upload error:', outerErr);
@@ -924,6 +1063,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     document.getElementById('analysis-processing').classList.add('hidden');
     document.getElementById('analysis-empty').classList.remove('hidden');
     document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${outerErr.message}</p>`;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitOriginalHtml; }
   }
 });
 
@@ -1750,6 +1890,19 @@ function loadEditor(plays, videoUrl, analysisId) {
   setupTimelineClick();
   startProgressTracking();
   loadEditorNotes(analysisId || null);
+
+  // Header metadata — pull from the loaded analysis when available.
+  const teamEl = document.getElementById('editor-team-name');
+  const dateEl = document.getElementById('editor-analysis-date');
+  const dateDiv = document.getElementById('editor-meta-div-1');
+  const playsEl = document.getElementById('editor-plays-count');
+  const notesHeaderEl = document.getElementById('editor-notes-count-header');
+  if (teamEl) teamEl.textContent = (currentAnalysis && currentAnalysis.teamName) || 'עורך וידאו';
+  const dateStr = currentAnalysis && currentAnalysis.createdAt ? formatHebrewDate(currentAnalysis.createdAt) : '';
+  if (dateEl) dateEl.textContent = dateStr;
+  if (dateDiv) dateDiv.style.display = dateStr ? '' : 'none';
+  if (playsEl) playsEl.textContent = String((plays || []).length);
+  if (notesHeaderEl) notesHeaderEl.textContent = String(editorNotes.length);
 }
 
 function initEditorVideoPlayer(videoUrl, videoId) {
@@ -1764,6 +1917,18 @@ function initEditorVideoPlayer(videoUrl, videoId) {
   const container = document.getElementById('editor-video-container');
   container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;object-fit:contain"></video>`;
   const v = document.getElementById('editor-html5-video');
+  // 404 from /api/video, file moved, or unsupported codec — show Hebrew error
+  // overlay rather than the browser's broken play button.
+  v.addEventListener('error', () => {
+    container.innerHTML = `
+      <div class="editor-video-error">
+        <div class="editor-video-error-icon">📹</div>
+        <h3>הסרטון לא זמין יותר</h3>
+        <p>הקובץ נמחק או שהשרת אופס מאז שהניתוח נשמר. ההערות והנתונים שלך נשמרו, אבל הסרטון עצמו לא זמין לצפייה.</p>
+        <p class="editor-video-error-hint">כדי לצפות בסרטון, יש להריץ ניתוח מחדש על הסרטון המקורי.</p>
+      </div>
+    `;
+  });
   // Wrap the <video> element in the same shape the rest of the editor uses
   // (seekTo/playVideo/setPlaybackRate) so callers don't have to branch.
   editorYtPlayer = {
@@ -1850,7 +2015,20 @@ function initEditorYouTubePlayer(videoId) {
       videoId: videoId,
       width: '100%',
       height: '100%',
-      playerVars: { rel: 0, modestbranding: 1, origin: location.origin }
+      playerVars: { rel: 0, modestbranding: 1, origin: location.origin },
+      events: {
+        // 2=invalid param, 5=HTML5 issue, 100=not found, 101/150=embed disabled
+        onError: () => {
+          const cnt = document.getElementById('editor-video-container');
+          if (cnt) cnt.innerHTML = `
+            <div class="editor-video-error">
+              <div class="editor-video-error-icon">📹</div>
+              <h3>הסרטון לא זמין</h3>
+              <p>YouTube לא הצליח לטעון את הסרטון. ייתכן שהקישור שגוי או שהבעלים הסיר את הסרטון.</p>
+            </div>
+          `;
+        }
+      }
     });
   };
 
@@ -2242,6 +2420,8 @@ function renderEditorNotes() {
   if (!list || !countEl) return;
 
   countEl.textContent = editorNotes.length;
+  const headerCount = document.getElementById('editor-notes-count-header');
+  if (headerCount) headerCount.textContent = editorNotes.length;
 
   if (!editorAnalysisId) {
     if (inputWrap) inputWrap.style.display = 'none';
