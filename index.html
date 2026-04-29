@@ -1470,7 +1470,7 @@ function initEditorVideoPlayer(videoUrl, videoId) {
   }
   // Backend-served HTML5 video — gives full programmatic seek + range scrubbing
   const container = document.getElementById('editor-video-container');
-  container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="width:100%;height:100%;background:#000;display:block"></video>`;
+  container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;object-fit:contain"></video>`;
   const v = document.getElementById('editor-html5-video');
   // Wrap the <video> element in the same shape the rest of the editor uses
   // (seekTo/playVideo/setPlaybackRate) so callers don't have to branch.
