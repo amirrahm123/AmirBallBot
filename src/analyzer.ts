@@ -57,20 +57,41 @@ async function loadRecentCorrections(teamName: string): Promise<string> {
   }
 }
 
-async function getKnowledgeContext(): Promise<string> {
+function formatKnowledgeContext(knowledge: any): string {
+  const parts: string[] = [];
+  if (knowledge.philosophy) parts.push(`Philosophy: ${knowledge.philosophy}`);
+  if (knowledge.offenseSystem) parts.push(`Offense system: ${knowledge.offenseSystem}`);
+  if (knowledge.defenseSystem) parts.push(`Defense system: ${knowledge.defenseSystem}`);
+  if (knowledge.documents?.length) {
+    const docText = knowledge.documents.map((d: any) => d.content).join('\n').substring(0, 1000);
+    if (docText) parts.push(docText);
+  }
+  if (parts.length === 0) return '';
+  return `\nCoaching context:\n${parts.join('\n')}\n`;
+}
+
+async function getKnowledgeContext(teamName: string): Promise<string> {
   try {
-    const knowledge = await TeamKnowledge.findOne({ teamId: 'default' });
-    if (!knowledge) return '';
-    const parts: string[] = [];
-    if (knowledge.philosophy) parts.push(`Philosophy: ${knowledge.philosophy}`);
-    if (knowledge.offenseSystem) parts.push(`Offense system: ${knowledge.offenseSystem}`);
-    if (knowledge.defenseSystem) parts.push(`Defense system: ${knowledge.defenseSystem}`);
-    if (knowledge.documents?.length) {
-      const docText = knowledge.documents.map(d => d.content).join('\n').substring(0, 1000);
-      if (docText) parts.push(docText);
+    const trimmedTeam = (teamName || '').trim();
+    if (!trimmedTeam) {
+      console.log('🧠 Knowledge context: no team name, using default');
+      const knowledge = await TeamKnowledge.findOne({ teamId: 'default' });
+      return knowledge ? formatKnowledgeContext(knowledge) : '';
     }
-    if (parts.length === 0) return '';
-    return `\nCoaching context:\n${parts.join('\n')}\n`;
+    // Try team-scoped first
+    let knowledge = await TeamKnowledge.findOne({ teamId: trimmedTeam });
+    if (knowledge) {
+      console.log(`🧠 Knowledge context: loaded for "${trimmedTeam}"`);
+      return formatKnowledgeContext(knowledge);
+    }
+    // Fallback to default
+    knowledge = await TeamKnowledge.findOne({ teamId: 'default' });
+    if (knowledge) {
+      console.log(`🧠 Knowledge context: no "${trimmedTeam}" knowledge, falling back to default`);
+      return formatKnowledgeContext(knowledge);
+    }
+    console.log('🧠 Knowledge context: none available');
+    return '';
   } catch (err) {
     console.warn('⚠️ Could not fetch knowledge base:', err);
     return '';
@@ -1272,7 +1293,7 @@ async function enrichPlaysWithClaude(
   }
 
   const client = getClient();
-  const knowledgeContext = await getKnowledgeContext();
+  const knowledgeContext = await getKnowledgeContext(teamName);
   const correctionsBlock = await loadRecentCorrections(teamName);
 
   const iqLayer1Block = IQ_LAYER_1_ENABLED ? `
@@ -1571,11 +1592,12 @@ ${JSON.stringify(geminiPlays, null, 2)}`,
 /** STEP 3: Generate coaching insights from enriched plays */
 async function generateInsightsFromPlays(
   plays: AnalysisResult['plays'],
-  context: string
+  context: string,
+  teamName: string
 ): Promise<AnalysisResult['insights']> {
   console.log(`\n💡 [3/3] Generating insights from ${plays.length} plays...`);
   const client = getClient();
-  const knowledgeContext = await getKnowledgeContext();
+  const knowledgeContext = await getKnowledgeContext(teamName);
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -1845,31 +1867,32 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
 
   // Step 4: Claude generates coaching insights
   onProgress?.(97, 'מייצר תובנות...');
-  const insights = await generateInsightsFromPlays(enrichedPlays, context);
+  const insights = await generateInsightsFromPlays(enrichedPlays, context, teamName);
 
   return {
     game: context || 'ניתוח משחק',
     plays: enrichedPlays,
     insights,
     shotChart: (() => {
-      const chart = { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 };
-      const offensivePlays = enrichedPlays.filter((p: any) => p.type === 'offense');
-      const total = offensivePlays.length || 1;
-      offensivePlays.forEach((p: any) => {
-        const loc = p.finish_location || '';
-        const pt = p.playType || '';
-        if (loc === 'paint') chart.paint++;
-        else if (loc === 'corner_3_left' || loc === 'corner_3_right') chart.corner3++;
-        else if (loc === 'above_break_3') chart.aboveBreak3++;
-        else if (loc === 'midrange_left' || loc === 'midrange_right' || loc === 'free_throw_line') chart.midRange++;
-        if (pt === 'pullUp3' || pt === 'isolation_fadeaway') chart.pullUp++;
+      // Sonnet enrichment doesn't pass through finish_location / playType.
+      // Match enriched plays back to their upstream Gemini play by startTime
+      // and read the shot fields from there.
+      const shotChart = { paint: 0, midRange: 0, corner3: 0, aboveBreak3: 0, pullUp: 0 };
+      enrichedPlays.forEach((enriched: any) => {
+        const gemini = geminiPlays.find(g => g.startTime === enriched.startTime);
+        if (!gemini) return;
+        const location = (gemini.finish_location || '').toLowerCase();
+        const playType = (gemini.playType || '').toLowerCase();
+
+        if (location.includes('paint') || location.includes('rim')) shotChart.paint++;
+        else if (location.includes('mid')) shotChart.midRange++;
+        else if (location.includes('corner') && location.includes('3')) shotChart.corner3++;
+        else if (location.includes('3') || location.includes('above')) shotChart.aboveBreak3++;
+
+        if (playType.includes('pull_up')) shotChart.pullUp++;
       });
-      chart.paint = Math.round((chart.paint / total) * 100);
-      chart.midRange = Math.round((chart.midRange / total) * 100);
-      chart.corner3 = Math.round((chart.corner3 / total) * 100);
-      chart.aboveBreak3 = Math.round((chart.aboveBreak3 / total) * 100);
-      chart.pullUp = Math.round((chart.pullUp / total) * 100);
-      return chart;
+      console.log(`📊 Shot chart computed: paint=${shotChart.paint} midRange=${shotChart.midRange} corner3=${shotChart.corner3} aboveBreak3=${shotChart.aboveBreak3} pullUp=${shotChart.pullUp}`);
+      return shotChart;
     })(),
   };
 }
