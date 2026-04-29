@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { execSync, execFileSync } from 'child_process';
+import { execSync, execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -163,12 +163,42 @@ export function downloadYouTube(url: string): string {
   console.log(`\n📥 [1/4] Downloading YouTube video: ${url}`);
 
   const cleanUrl = url.split('&t=')[0];
-  const cmd = `yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]/best" --no-part --buffer-size 16K -o "${outPath}" "${cleanUrl}"`;
-  console.log(`   CMD: ${cmd}`);
+  // --js-runtimes node: YouTube now requires a JS runtime to decode stream
+  // signatures. Railway's container has Node available; deno is not installed.
+  const args = [
+    '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
+    '--no-part',
+    '--buffer-size', '16K',
+    '--js-runtimes', 'node',
+    '-o', outPath,
+    cleanUrl,
+  ];
+  console.log(`   CMD: yt-dlp ${args.join(' ')}`);
 
-  execSync(cmd, { stdio: 'inherit', timeout: 300000 });
+  const result = spawnSync('yt-dlp', args, {
+    stdio: ['ignore', 'inherit', 'pipe'],
+    timeout: 300000,
+    encoding: 'utf8',
+  });
 
+  const stderrStr = result.stderr ? String(result.stderr) : '';
+  const stderrTail = stderrStr.slice(-500);
+  if (stderrTail) console.error(`   yt-dlp stderr tail:\n${stderrTail}`);
+
+  if (result.error) {
+    throw new Error(`yt-dlp failed to spawn: ${result.error.message}\n--- stderr tail ---\n${stderrTail}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`yt-dlp exited with status ${result.status}\n--- stderr tail ---\n${stderrTail}`);
+  }
+  if (!fs.existsSync(outPath)) {
+    throw new Error(`yt-dlp exit 0 but output file missing at ${outPath}\n--- stderr tail ---\n${stderrTail}`);
+  }
   const stat = fs.statSync(outPath);
+  if (stat.size === 0) {
+    throw new Error(`yt-dlp exit 0 but output file is empty at ${outPath}\n--- stderr tail ---\n${stderrTail}`);
+  }
+
   console.log(`   ✅ Downloaded: ${(stat.size / 1024 / 1024).toFixed(1)}MB → ${outPath}`);
   return outPath;
 }
