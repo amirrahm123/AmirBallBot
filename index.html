@@ -178,6 +178,29 @@ textarea{resize:vertical;min-height:80px}
 .hidden{display:none!important}
 .fade-in{animation:fadeIn .3s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* === Editor screen === */
+.editor-grid{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
+.editor-video-wrap{position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:var(--radius);background:#000}
+.editor-video-wrap iframe,.editor-video-wrap > div{position:absolute;top:0;left:0;width:100%;height:100%}
+.editor-controls{display:flex;justify-content:space-between;gap:16px;margin-top:12px;flex-wrap:wrap}
+.editor-speed-group,.editor-filter-group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.editor-speed-btn,.editor-filter-pill{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;transition:.2s}
+.editor-speed-btn.active,.editor-filter-pill.active{background:var(--accent);color:#0a0c0f;border-color:var(--accent)}
+.editor-speed-btn:hover,.editor-filter-pill:hover{background:var(--bg4)}
+.editor-speed-btn.active:hover,.editor-filter-pill.active:hover{background:var(--accent2)}
+.editor-suggestions-card{max-height:calc(100vh - 200px);display:flex;flex-direction:column}
+.editor-suggestions-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-left:4px}
+.editor-suggestion{padding:12px;background:var(--bg3);border-radius:var(--radius);cursor:pointer;border-right:3px solid transparent;transition:background .15s ease,border-color .15s ease;display:flex;gap:12px;align-items:flex-start}
+.editor-suggestion:hover{background:var(--bg4)}
+.editor-suggestion.active{background:var(--bg4);border-right-color:var(--accent)}
+.editor-suggestion-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:52px;flex-shrink:0;padding-top:2px}
+.editor-suggestion-body{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.editor-suggestion-label{font-size:13px;font-weight:500;line-height:1.4}
+.editor-suggestion-players{font-size:12px;color:var(--text3);font-family:'DM Mono',monospace}
+.editor-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.editor-empty{text-align:center;padding:60px 20px;color:var(--text3)}
+@media(max-width:900px){.editor-grid{grid-template-columns:1fr}.editor-suggestions-card{max-height:none}}
 </style>
 </head>
 <body>
@@ -187,6 +210,7 @@ textarea{resize:vertical;min-height:80px}
   <div class="logo" title="AmirBallBot">🏀</div>
   <button class="nav-btn active" data-screen="upload" title="העלאת סרטון">📤</button>
   <button class="nav-btn" data-screen="analysis" title="ניתוח משחק">📊</button>
+  <button class="nav-btn" data-screen="editor" title="עורך וידאו">🎬</button>
   <button class="nav-btn" data-screen="chat" title="צ'אט עם המאמן">💬</button>
   <button class="nav-btn" data-screen="roster" title="סגל">👥</button>
   <button class="nav-btn" data-screen="player" title="פרופיל שחקן">⭐</button>
@@ -328,6 +352,7 @@ textarea{resize:vertical;min-height:80px}
         <div id="verify-bar" class="card hidden" style="display:flex;align-items:center;gap:16px;padding:12px 16px;margin-bottom:16px;flex-wrap:wrap">
           <span id="verify-score" style="font-size:14px;font-weight:700;color:var(--text2)"></span>
           <button class="btn btn-primary btn-sm hidden" id="verify-save-btn" onclick="saveVerification()">💾 שמור ציון</button>
+          <button class="btn btn-secondary btn-sm" onclick="openCurrentInEditor()" style="margin-right:auto">🎬 פתח בעורך וידאו</button>
         </div>
 
         <div class="stats-row" id="stat-cards"></div>
@@ -368,6 +393,52 @@ textarea{resize:vertical;min-height:80px}
         <p style="font-size:48px;margin-bottom:16px">📊</p>
         <h3 style="color:var(--text);margin-bottom:8px">אין ניתוח עדיין</h3>
         <p>העלה סרטון משחק כדי להתחיל</p>
+      </div>
+    </div>
+
+    <!-- Editor Screen -->
+    <div class="screen" id="screen-editor">
+      <div class="card">
+        <div class="editor-header-row">
+          <h3>עורך וידאו</h3>
+          <button class="btn btn-secondary btn-sm" onclick="goBackFromEditor()">← חזור לניתוח</button>
+        </div>
+      </div>
+
+      <div id="editor-empty" class="editor-empty">
+        <p style="font-size:48px;margin-bottom:16px">🎬</p>
+        <h3 style="color:var(--text);margin-bottom:8px">העורך ריק</h3>
+        <p>פתח ניתוח משחק ולחץ "פתח בעורך וידאו" כדי להתחיל</p>
+      </div>
+
+      <div id="editor-content" class="editor-grid hidden">
+        <div>
+          <div class="card" style="padding:12px">
+            <div class="editor-video-wrap" id="editor-video-container"></div>
+            <div class="editor-controls">
+              <div class="editor-speed-group">
+                <span style="color:var(--text2);font-size:12px">מהירות:</span>
+                <button class="editor-speed-btn" data-speed="0.5" onclick="setEditorSpeed(0.5)">0.5x</button>
+                <button class="editor-speed-btn active" data-speed="1" onclick="setEditorSpeed(1)">1x</button>
+                <button class="editor-speed-btn" data-speed="1.5" onclick="setEditorSpeed(1.5)">1.5x</button>
+                <button class="editor-speed-btn" data-speed="2" onclick="setEditorSpeed(2)">2x</button>
+              </div>
+              <div class="editor-filter-group">
+                <button class="editor-filter-pill active" data-filter="all" onclick="setEditorFilter('all')">כל המהלכים</button>
+                <button class="editor-filter-pill" data-filter="offense" onclick="setEditorFilter('offense')">התקפה</button>
+                <button class="editor-filter-pill" data-filter="defense" onclick="setEditorFilter('defense')">הגנה</button>
+                <button class="editor-filter-pill" data-filter="transition" onclick="setEditorFilter('transition')">מעבר</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card editor-suggestions-card">
+          <div class="card-header">
+            <h3>רגעים שזוהו (<span id="editor-suggestions-count">0</span>)</h3>
+          </div>
+          <div id="editor-suggestions-list" class="editor-suggestions-list"></div>
+        </div>
       </div>
     </div>
 
@@ -500,7 +571,7 @@ document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
     const screen = btn.dataset.screen;
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-' + screen).classList.add('active');
-    const titles = {upload:'העלאת סרטון',analysis:'ניתוח משחק',chat:'צ\'אט מאמן',roster:'סגל',player:'פרופיל שחקן',scouting:'דו״ח סקאוטינג',practice:'תוכנית אימון',saved:'ניתוחים שמורים'};
+    const titles = {upload:'העלאת סרטון',analysis:'ניתוח משחק',editor:'עורך וידאו',chat:'צ\'אט מאמן',roster:'סגל',player:'פרופיל שחקן',scouting:'דו״ח סקאוטינג',practice:'תוכנית אימון',saved:'ניתוחים שמורים'};
     document.getElementById('screen-title').textContent = titles[screen] || '';
   });
 });
@@ -1233,11 +1304,12 @@ async function loadSavedAnalyses() {
     list.innerHTML = analyses.map(a => {
       const date = new Date(a.createdAt);
       const formatted = `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}`;
-      return `<div class="play-item" style="display:flex;justify-content:space-between;align-items:center">
+      return `<div class="play-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="cursor:pointer;flex:1" onclick="loadSavedAnalysis('${a._id}')">
           <div style="font-weight:600;font-size:14px">${a.teamName || 'לא ידוע'}</div>
           <div style="font-size:12px;color:var(--text3)">${formatted} &middot; ${a.playCount || 0} מהלכים &middot; ${a.focus || 'all'}</div>
         </div>
+        <button class="btn btn-sm" onclick="openSavedInEditor('${a._id}')" style="padding:4px 10px;font-size:12px">🎬 פתח בעורך</button>
         <button class="btn btn-sm" onclick="deleteSavedAnalysis('${a._id}')" style="padding:2px 6px;font-size:12px">🗑️</button>
       </div>`;
     }).join('');
@@ -1346,6 +1418,178 @@ async function saveVerification() {
   } catch (err) {
     alert('שגיאה בשמירה: ' + err.message);
   }
+}
+
+// === Video Editor ===
+let editorPlays = [];
+let editorVideoUrl = '';
+let editorActiveFilter = 'all';
+let editorYtPlayer = null;
+
+function loadEditor(plays, videoUrl) {
+  if (!videoUrl) {
+    alert('צריך URL של YouTube כדי לפתוח עורך');
+    return;
+  }
+  const ytId = extractYouTubeId(videoUrl);
+  if (!ytId) {
+    alert('העורך תומך רק בקישורי YouTube. אנא העלה את המשחק ל-YouTube כסרטון לא רשום.');
+    return;
+  }
+
+  editorPlays = plays || [];
+  editorVideoUrl = videoUrl;
+  editorActiveFilter = 'all';
+
+  // Switch to editor screen (replicate sidebar nav switch)
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const navBtn = document.querySelector('[data-screen="editor"]');
+  if (navBtn) navBtn.classList.add('active');
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-editor').classList.add('active');
+  document.getElementById('screen-title').textContent = 'עורך וידאו';
+
+  document.getElementById('editor-empty').classList.add('hidden');
+  document.getElementById('editor-content').classList.remove('hidden');
+
+  // Reset filter pills + speed buttons to defaults
+  document.querySelectorAll('.editor-filter-pill').forEach(p => p.classList.toggle('active', p.dataset.filter === 'all'));
+  document.querySelectorAll('.editor-speed-btn').forEach(b => b.classList.toggle('active', parseFloat(b.dataset.speed) === 1));
+
+  initEditorYouTubePlayer(ytId);
+  renderEditorSuggestions();
+}
+
+function initEditorYouTubePlayer(videoId) {
+  const container = document.getElementById('editor-video-container');
+  container.innerHTML = '<div id="editor-yt-player"></div>';
+
+  const buildPlayer = () => {
+    if (editorYtPlayer && editorYtPlayer.destroy) {
+      try { editorYtPlayer.destroy(); } catch(_) {}
+    }
+    editorYtPlayer = new YT.Player('editor-yt-player', {
+      videoId: videoId,
+      width: '100%',
+      height: '100%',
+      playerVars: { rel: 0, modestbranding: 1, origin: location.origin }
+    });
+  };
+
+  if (typeof YT === 'undefined' || !YT.Player) {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof prev === 'function') { try { prev(); } catch(_) {} }
+      buildPlayer();
+    };
+    // Fallback poll in case API was already loaded mid-flight
+    let waited = 0;
+    const wait = setInterval(() => {
+      waited += 200;
+      if (typeof YT !== 'undefined' && YT.Player) {
+        clearInterval(wait);
+        buildPlayer();
+      } else if (waited > 8000) {
+        clearInterval(wait);
+      }
+    }, 200);
+    return;
+  }
+
+  buildPlayer();
+}
+
+function renderEditorSuggestions() {
+  const filtered = editorActiveFilter === 'all'
+    ? editorPlays
+    : editorPlays.filter(p => {
+        const t = (p.type || '').toLowerCase();
+        if (editorActiveFilter === 'offense') return t === 'offense';
+        if (editorActiveFilter === 'defense') return t === 'defense';
+        if (editorActiveFilter === 'transition') return t === 'transition';
+        return true;
+      });
+
+  const list = document.getElementById('editor-suggestions-list');
+  document.getElementById('editor-suggestions-count').textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text2);padding:24px">אין מהלכים בקטגוריה זו</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map((p, i) => {
+    const seekTime = parseTimeToSeconds(p.startTime || p.time);
+    const t = (p.type || '').toLowerCase();
+    const typeClass = t.includes('defense') ? 'defense' : t.includes('transition') ? 'transition' : 'offense';
+    const typeLabel = typeClass === 'offense' ? 'התקפה' : typeClass === 'defense' ? 'הגנה' : 'מעבר';
+    const timeDisplay = p.startTime || p.time || '';
+    return `<div class="editor-suggestion" data-index="${i}" data-time="${seekTime}" onclick="selectEditorSuggestion(this, ${seekTime})">
+      <div class="editor-suggestion-time">${timeDisplay}</div>
+      <div class="editor-suggestion-body">
+        <span class="play-type ${typeClass}">${typeLabel}</span>
+        <div class="editor-suggestion-label">${p.label || ''}</div>
+        <div class="editor-suggestion-players">${(p.players||[]).join(', ')}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectEditorSuggestion(el, seekTime) {
+  document.querySelectorAll('.editor-suggestion').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  if (editorYtPlayer && typeof editorYtPlayer.seekTo === 'function') {
+    editorYtPlayer.seekTo(seekTime, true);
+    if (typeof editorYtPlayer.playVideo === 'function') editorYtPlayer.playVideo();
+  }
+}
+
+function setEditorFilter(filter) {
+  editorActiveFilter = filter;
+  document.querySelectorAll('.editor-filter-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.filter === filter);
+  });
+  renderEditorSuggestions();
+}
+
+function setEditorSpeed(speed) {
+  if (editorYtPlayer && typeof editorYtPlayer.setPlaybackRate === 'function') {
+    editorYtPlayer.setPlaybackRate(speed);
+  }
+  document.querySelectorAll('.editor-speed-btn').forEach(b => {
+    b.classList.toggle('active', parseFloat(b.dataset.speed) === speed);
+  });
+}
+
+function goBackFromEditor() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const navBtn = document.querySelector('[data-screen="analysis"]');
+  if (navBtn) navBtn.classList.add('active');
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-analysis').classList.add('active');
+  document.getElementById('screen-title').textContent = 'ניתוח משחק';
+}
+
+function openCurrentInEditor() {
+  const plays = (currentAnalysis && currentAnalysis.plays) || [];
+  loadEditor(plays, currentVideoUrl);
+}
+
+function openSavedInEditor(id) {
+  const url = prompt('הדבק קישור YouTube של המשחק:');
+  if (!url) return;
+  fetch(`${API}/api/analyses/${id}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      loadEditor(data.plays || [], url);
+    })
+    .catch(err => { console.error(err); alert('שגיאה בטעינה'); });
 }
 </script>
 </body>
