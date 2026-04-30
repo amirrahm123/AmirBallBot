@@ -210,10 +210,19 @@ textarea{resize:vertical;min-height:80px}
 .editor-timeline-progress{position:absolute;right:0;top:-4px;bottom:-4px;width:2px;background:var(--text);pointer-events:none;will-change:right}
 .editor-timeline-times{display:flex;justify-content:space-between;margin-top:8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)}
 
-/* Hover tooltip — label + time only */
-.editor-marker-tooltip{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);pointer-events:none;z-index:200;opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease;max-width:240px;left:0;top:0;direction:rtl;text-align:right;box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+/* Hover tooltip — 16:9 preview thumbnail + text */
+.editor-marker-tooltip{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:8px;width:280px;pointer-events:none;z-index:200;opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.4);direction:rtl;text-align:right;left:0;top:0}
 .editor-marker-tooltip.visible{opacity:1;transform:translateY(0)}
-.editor-marker-tooltip .tooltip-time{font-family:'DM Mono',monospace;color:var(--text2);margin-left:6px}
+.tooltip-preview{background:#000;aspect-ratio:16/9;position:relative;overflow:hidden}
+.tooltip-preview iframe,.tooltip-preview video,.tooltip-preview > div{width:100%!important;height:100%!important;position:absolute;top:0;left:0}
+.tooltip-info{padding:8px 12px}
+.tooltip-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.tooltip-time{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);font-weight:600}
+.tooltip-type{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600}
+.tooltip-type.offense{background:rgba(0,229,160,0.15);color:var(--accent)}
+.tooltip-type.defense{background:rgba(255,77,106,0.15);color:var(--red)}
+.tooltip-type.transition{background:rgba(255,197,68,0.15);color:var(--yellow)}
+.tooltip-label{font-size:13px;color:var(--text);line-height:1.4}
 
 /* Persistent popup card. Opens on marker click; positioned centered via
    left:50%/top:50% + translate(-50%,-50%). pointer-events stays auto so
@@ -1838,6 +1847,14 @@ let editorPopupOutsideHandler = null;
 // don't have to JSON-stringify the play into the inline onclick.
 let editorClusterPopupPlays = [];
 
+// Hover-tooltip preview player. Lives in a hidden 1×1 container by default,
+// gets moved into the tooltip's preview slot on hover, then parked back on
+// hide. Survives across hovers so we don't pay iframe init each time.
+let editorPreviewYt = null;
+let editorPreviewVideo = null;
+let editorPreviewSeekTimeout = null;
+let editorIsHtml5 = false;
+
 const SHAPE_BY_OUTCOME = {
   made_2: 'circle-filled', made_3: 'circle-filled',
   missed_2: 'circle-hollow', missed_3: 'circle-hollow', block: 'circle-hollow',
@@ -1927,12 +1944,63 @@ function loadEditor(plays, videoUrl, analysisId) {
   if (notesHeaderEl) notesHeaderEl.textContent = String(editorNotes.length);
 }
 
+// Hidden hover-preview YouTube player. Parked in a 1×1 container off-screen,
+// moved into the tooltip slot when the user hovers a marker.
+function initPreviewYouTube(videoId) {
+  let container = document.getElementById('editor-preview-yt-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'editor-preview-yt-container';
+    container.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none';
+    document.body.appendChild(container);
+  }
+  container.innerHTML = '<div id="editor-preview-yt"></div>';
+
+  if (typeof YT === 'undefined' || !YT.Player) {
+    setTimeout(() => initPreviewYouTube(videoId), 500);
+    return;
+  }
+
+  if (editorPreviewYt && editorPreviewYt.destroy) {
+    try { editorPreviewYt.destroy(); } catch(_) {}
+  }
+
+  editorPreviewYt = new YT.Player('editor-preview-yt', {
+    videoId: videoId,
+    width: '100%',
+    height: '100%',
+    playerVars: { controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, mute: 1, playsinline: 1 },
+    events: {
+      onReady: () => { try { editorPreviewYt.mute(); editorPreviewYt.pauseVideo(); } catch(_) {} },
+    },
+  });
+}
+
+// Hidden hover-preview HTML5 video. Held as a JS reference and moved into
+// the tooltip slot on hover.
+function initPreviewHtml5(videoUrl) {
+  if (editorPreviewVideo) {
+    try { editorPreviewVideo.pause(); } catch(_) {}
+    editorPreviewVideo.remove();
+  }
+  const v = document.createElement('video');
+  v.src = videoUrl;
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'metadata';
+  v.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none';
+  editorPreviewVideo = v;
+}
+
 function initEditorVideoPlayer(videoUrl, videoId) {
   if (videoId) {
+    editorIsHtml5 = false;
     initEditorYouTubePlayer(videoId);
+    initPreviewYouTube(videoId);
     return;
   }
   // Backend-served HTML5 video — gives full programmatic seek + range scrubbing
+  editorIsHtml5 = true;
   const container = document.getElementById('editor-video-container');
   container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;object-fit:contain"></video>`;
   const v = document.getElementById('editor-html5-video');
@@ -1960,6 +2028,7 @@ function initEditorVideoPlayer(videoUrl, videoId) {
     setPlaybackRate: (r) => { v.playbackRate = r; },
     destroy: () => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch(_) {} },
   };
+  initPreviewHtml5(videoUrl);
 }
 
 function initEditorYouTubePlayer(videoId) {
@@ -2096,24 +2165,77 @@ function renderTimelineMarkers() {
   }
 }
 
-// Lightweight hover tooltip — just label + timestamp, viewport-positioned.
+// Hover tooltip with mini video preview seeked to the marker's timestamp.
+// The preview iframe/<video> lives in a hidden container by default and gets
+// moved into the tooltip's preview slot on hover; hideMarkerTooltip parks
+// it back. 150ms debounce on seek prevents thrashing during fast hover.
 function showMarkerTooltip(markerEl, play) {
   const tooltip = document.getElementById('editor-marker-tooltip');
   if (!tooltip) return;
-  tooltip.innerHTML = `<span class="tooltip-time">${escapeHtml(play.startTime || '')}</span>${escapeHtml(play.label || '')}`;
-  // Measure after content set so width is accurate
+
+  const seekTime = parseTimeToSeconds(play.startTime || play.time);
+  const type = (play.type || '').toLowerCase();
+  const typeLabel = type === 'offense' ? 'התקפה' : type === 'defense' ? 'הגנה' : 'מעבר';
+
+  tooltip.innerHTML = `
+    <div class="tooltip-preview"></div>
+    <div class="tooltip-info">
+      <div class="tooltip-header">
+        <span class="tooltip-time">${escapeHtml(play.startTime || play.time || '')}</span>
+        <span class="tooltip-type ${type}">${typeLabel}</span>
+      </div>
+      <div class="tooltip-label">${escapeHtml(play.label || '')}</div>
+    </div>
+  `;
+
+  const previewSlot = tooltip.querySelector('.tooltip-preview');
+  if (editorIsHtml5 && editorPreviewVideo) {
+    previewSlot.appendChild(editorPreviewVideo);
+    editorPreviewVideo.style.display = 'block';
+    clearTimeout(editorPreviewSeekTimeout);
+    editorPreviewSeekTimeout = setTimeout(() => {
+      try { editorPreviewVideo.currentTime = seekTime; } catch(_) {}
+    }, 150);
+  } else if (!editorIsHtml5) {
+    const ytContainer = document.getElementById('editor-preview-yt-container');
+    if (ytContainer) {
+      previewSlot.appendChild(ytContainer);
+      ytContainer.style.cssText = 'position:relative;width:100%;height:100%;visibility:visible';
+      clearTimeout(editorPreviewSeekTimeout);
+      editorPreviewSeekTimeout = setTimeout(() => {
+        try {
+          if (editorPreviewYt && editorPreviewYt.seekTo) {
+            editorPreviewYt.seekTo(seekTime, true);
+            if (editorPreviewYt.pauseVideo) editorPreviewYt.pauseVideo();
+          }
+        } catch(_) {}
+      }, 150);
+    }
+  }
+
+  // Position — tooltip is now ~280×~200, anchor above marker, clamp to viewport
   const rect = markerEl.getBoundingClientRect();
-  const tipWidth = tooltip.offsetWidth || 200;
-  let left = rect.left + (rect.width / 2) - (tipWidth / 2);
-  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
+  const tooltipWidth = 280;
+  let left = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+  left = Math.max(8, Math.min(left, window.innerWidth - tooltipWidth - 8));
+  let top = rect.top - 200;
+  if (top < 8) top = rect.bottom + 16;
   tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${rect.top - 36}px`;
+  tooltip.style.top = `${top}px`;
   tooltip.classList.add('visible');
 }
 
 function hideMarkerTooltip() {
   const tooltip = document.getElementById('editor-marker-tooltip');
-  if (tooltip) tooltip.classList.remove('visible');
+  if (!tooltip) return;
+  tooltip.classList.remove('visible');
+  // Park YouTube preview back in its hidden 1×1 home so the iframe keeps
+  // running across hovers without re-init.
+  const ytContainer = document.getElementById('editor-preview-yt-container');
+  if (ytContainer && !editorIsHtml5) {
+    document.body.appendChild(ytContainer);
+    ytContainer.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none';
+  }
 }
 
 // Persistent popup card for a single play. Centered, stays open until the

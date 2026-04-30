@@ -522,10 +522,17 @@ async function detectPlayTimestamps(
   const prompt = `You are watching a basketball game video.
 Your ONLY job is to find timestamps where important plays happened.
 
-Important plays are:
-- Any basket scored (by either team)
-- Any steal or clear turnover
-- Any fast break
+Important plays are ALL of these, equally important:
+- Any basket made (by either team)
+- Any shot attempt that MISSED, was blocked, or was contested into a bad shot
+- Any turnover by either team (sloppy passes, travels, offensive fouls, palming, kicked balls — not just "clean" steals)
+- Any defensive stop or block
+- Any fast break or transition push, regardless of how it ended (made, missed, turned over)
+- Any offensive rebound that led to another possession
+
+CRITICAL: Misses and turnovers are AS IMPORTANT AS made baskets. Coaches study failures more than successes. Do not skew your selection toward highlight moments.
+
+INCLUSION PHILOSOPHY: When in doubt, INCLUDE. A false-positive timestamp is harmless (the per-clip analyzer will inspect it). A false-negative loses a play permanently. Bias toward over-inclusion.
 
 Return ONLY a valid JSON array of timestamp strings in MM:SS format.
 Example: ["02:34", "04:11", "07:22", "13:05"]
@@ -543,15 +550,20 @@ Focus team jersey color: ${jerseyColor || 'unknown'}
 
 Only emit a timestamp when the focus team is a MEANINGFUL actor in the play:
   INCLUDE if the focus team:
-    • scores or attempts to score
-    • is scored on (their defensive moment)
-    • makes a defensive play (steal, block, charge drawn, contested-stop)
-    • makes a mistake (turnover, bad pass, offensive foul)
-    • gets a rebound (offensive or defensive)
-  SKIP if:
-    • the play is pure opponent-vs-opponent action with the focus team not involved
-    • opponent isolation scoring with no visible focus-team defensive error
-    • administrative moments (timeouts, opponent free-throw routines)
+    • scores OR misses a shot OR has a shot blocked
+    • is scored on by the opponent (this IS a defensive moment, ALWAYS include)
+    • forces a turnover (steal, block, charge, contested stop, deflection)
+    • commits a turnover (bad pass, travel, offensive foul, palming, kicked ball, shot clock violation)
+    • gets an offensive or defensive rebound that meaningfully changes possession dynamics
+    • is involved in a fast break either way (running it or defending it)
+
+The opponent-scoring case especially: when the opponent scores, it ALWAYS counts as a focus-team defensive moment. Do not require a "visible defender error" to include it.
+
+  SKIP only if:
+    • Administrative moments (timeouts, opponent free-throw routines, dead ball periods)
+    • Pre-game or post-game footage with no actual play
+
+DO NOT skip opponent scoring just because you cannot identify a specific focus-team defender error. The focus team was on defense - that IS a defensive moment worth analyzing. Opponent baskets ARE important plays from the focus team's perspective.
 
 If the focus team is even partially involved (helping on defense, recovering, contesting), INCLUDE the play.
 When unsure whether the focus team is involved, INCLUDE the play. A false include is easier to fix via coach corrections than a missed play.
