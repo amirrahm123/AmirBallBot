@@ -210,21 +210,38 @@ textarea{resize:vertical;min-height:80px}
 .editor-timeline-progress{position:absolute;right:0;top:-4px;bottom:-4px;width:2px;background:var(--text);pointer-events:none;will-change:right}
 .editor-timeline-times{display:flex;justify-content:space-between;margin-top:8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)}
 
-/* Floating play card. Uses position:fixed because positionPlayCard()
-   computes coords from getBoundingClientRect (viewport space). */
-.editor-play-card{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:360px;max-width:90vw;box-shadow:0 8px 24px rgba(0,0,0,0.5);pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .2s ease;will-change:opacity,transform;z-index:1000;overflow:hidden;left:0;top:0}
-.editor-play-card.visible{opacity:1;transform:translateY(0)}
-.editor-play-card-preview{background:#000;aspect-ratio:16/9;position:relative;overflow:hidden}
-.editor-play-card-preview iframe,.editor-play-card-preview video,.editor-play-card-preview > div{width:100%!important;height:100%!important;pointer-events:none;position:absolute;top:0;left:0}
-.editor-play-card-content{padding:12px 16px}
-.editor-play-card-header{display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px;color:var(--text2)}
-.editor-play-card-label{font-weight:600;font-size:15px;margin-bottom:6px;color:var(--text)}
-.editor-play-card-players{font-size:12px;color:var(--text2);margin-bottom:8px}
+/* Hover tooltip — label + time only */
+.editor-marker-tooltip{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);pointer-events:none;z-index:200;opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease;max-width:240px;left:0;top:0;direction:rtl;text-align:right;box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+.editor-marker-tooltip.visible{opacity:1;transform:translateY(0)}
+.editor-marker-tooltip .tooltip-time{font-family:'DM Mono',monospace;color:var(--text2);margin-left:6px}
+
+/* Persistent popup card. Opens on marker click; positioned centered via
+   left:50%/top:50% + translate(-50%,-50%). pointer-events stays auto so
+   the close button and cluster items are clickable. */
+.editor-play-card{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:400px;max-width:calc(100vw - 32px);max-height:80vh;overflow-y:auto;box-shadow:0 12px 32px rgba(0,0,0,0.55);opacity:0;visibility:hidden;transition:opacity .2s ease;z-index:1000;left:50%;top:50%;transform:translate(-50%,-50%)}
+.editor-play-card.visible{opacity:1;visibility:visible}
+.editor-play-card-close{position:absolute;top:8px;left:8px;background:transparent;border:none;color:var(--text2);font-size:22px;line-height:1;cursor:pointer;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease;z-index:1;font-family:inherit}
+.editor-play-card-close:hover{background:var(--bg4);color:var(--text)}
+.editor-play-card-content{padding:16px 20px}
+.editor-play-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px;color:var(--text2);padding-left:32px}
+.editor-play-card-label{font-weight:600;font-size:16px;margin-bottom:8px;color:var(--text);line-height:1.4}
+.editor-play-card-players{font-size:12px;color:var(--text2);margin-bottom:10px;font-family:'DM Mono',monospace}
 .editor-play-card-note{font-size:13px;line-height:1.5;color:var(--text)}
-.editor-play-card-type{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.editor-play-card-type{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;flex-shrink:0}
 .editor-play-card-type.offense{background:rgba(0,229,160,0.15);color:var(--accent)}
 .editor-play-card-type.defense{background:rgba(255,77,106,0.15);color:var(--red)}
 .editor-play-card-type.transition{background:rgba(255,197,68,0.15);color:var(--yellow)}
+
+/* Observations section (shown only on negative plays that have observations) */
+.editor-play-card-observations{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+.observations-header{font-size:12px;color:var(--text2);font-weight:600;margin-bottom:8px}
+.observations-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.observations-list li{padding:8px 12px;background:var(--bg3);border-radius:6px;font-size:13px;line-height:1.4;color:var(--text);border-right:2px solid var(--accent)}
+
+/* Cluster popup play items (rendered when a cluster marker is clicked) */
+.cluster-play-item{display:flex;gap:12px;align-items:center;width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;margin-bottom:6px;font-family:inherit;font-size:13px;text-align:right;direction:rtl;transition:background .15s ease,border-color .15s ease}
+.cluster-play-item:hover{background:var(--bg4);border-color:var(--accent)}
+.cluster-play-time{font-family:'DM Mono',monospace;color:var(--accent);font-weight:600;font-size:12px;flex-shrink:0}
 
 /* === Editor coach notes panel === */
 .editor-notes-panel{position:fixed;bottom:16px;left:16px;width:320px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .2s ease}
@@ -615,15 +632,14 @@ textarea{resize:vertical;min-height:80px}
           </div>
         </div>
 
-        <!-- Hidden preview iframe host (gets moved into the play card on hover) -->
-        <div id="editor-preview-container" style="display:none;width:100%;height:100%">
-          <div id="editor-preview-yt"></div>
-        </div>
       </div>
 
-      <!-- Floating play card (rendered once, repositioned on hover) -->
+      <!-- Small hover tooltip (label + time only) -->
+      <div class="editor-marker-tooltip" id="editor-marker-tooltip"></div>
+
+      <!-- Persistent popup card opened on marker click -->
       <div class="editor-play-card" id="editor-play-card">
-        <div class="editor-play-card-preview"></div>
+        <button class="editor-play-card-close" type="button" onclick="closePlayPopup()" aria-label="סגור">×</button>
         <div class="editor-play-card-content">
           <div class="editor-play-card-header">
             <span class="editor-play-card-time"></span>
@@ -632,6 +648,10 @@ textarea{resize:vertical;min-height:80px}
           <div class="editor-play-card-label"></div>
           <div class="editor-play-card-players"></div>
           <div class="editor-play-card-note"></div>
+          <div class="editor-play-card-observations" style="display:none">
+            <div class="observations-header">🔍 מה ה-AI הבחין</div>
+            <ul class="observations-list"></ul>
+          </div>
         </div>
       </div>
 
@@ -1811,11 +1831,12 @@ let editorAnalysisId = null;
 let editorVideoDuration = 0;
 let editorProgressInterval = null;
 let editorClusterThresholdSeconds = 3;
-let editorPreviewYt = null;
-let editorPreviewSeekTimeout = null;
-let editorPreviewVideo = null; // for HTML5 video preview
-let editorIsHtml5 = false;
 let editorTimelineClickWired = false;
+let editorPopupOutsideHandler = null;
+// Cluster popup needs to access the original play objects when items are
+// clicked. Stored on a side array indexed by data-cluster-index attr so we
+// don't have to JSON-stringify the play into the inline onclick.
+let editorClusterPopupPlays = [];
 
 const SHAPE_BY_OUTCOME = {
   made_2: 'circle-filled', made_3: 'circle-filled',
@@ -1884,7 +1905,8 @@ function loadEditor(plays, videoUrl, analysisId) {
   if (curEl) curEl.textContent = '0:00';
   const durEl = document.getElementById('editor-time-duration');
   if (durEl) durEl.textContent = '0:00';
-  hidePlayCard();
+  closePlayPopup();
+  hideMarkerTooltip();
 
   initEditorVideoPlayer(videoUrl, ytId);
   setupTimelineClick();
@@ -1907,13 +1929,10 @@ function loadEditor(plays, videoUrl, analysisId) {
 
 function initEditorVideoPlayer(videoUrl, videoId) {
   if (videoId) {
-    editorIsHtml5 = false;
     initEditorYouTubePlayer(videoId);
-    initPreviewYouTube(videoId);
     return;
   }
   // Backend-served HTML5 video — gives full programmatic seek + range scrubbing
-  editorIsHtml5 = true;
   const container = document.getElementById('editor-video-container');
   container.innerHTML = `<video id="editor-html5-video" src="${videoUrl}" controls playsinline preload="metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;object-fit:contain"></video>`;
   const v = document.getElementById('editor-html5-video');
@@ -1941,66 +1960,6 @@ function initEditorVideoPlayer(videoUrl, videoId) {
     setPlaybackRate: (r) => { v.playbackRate = r; },
     destroy: () => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch(_) {} },
   };
-  initPreviewHtml5(videoUrl);
-}
-
-// Hidden YouTube preview player. Used by the hover card to show a frame
-// at the marker's timestamp. Muted, no controls. Survives across hovers
-// (we move its DOM node in/out of the card slot rather than recreating it).
-function initPreviewYouTube(videoId) {
-  const container = document.getElementById('editor-preview-container');
-  if (!container) return;
-  // Reattach to body if it was previously moved into a card and the card was
-  // re-rendered without it (e.g. screen switch).
-  if (container.parentElement !== document.body && !document.getElementById('screen-editor').contains(container)) {
-    document.body.appendChild(container);
-  }
-  container.innerHTML = '<div id="editor-preview-yt"></div>';
-  container.style.display = 'none';
-
-  const build = () => {
-    if (editorPreviewYt && editorPreviewYt.destroy) {
-      try { editorPreviewYt.destroy(); } catch(_) {}
-    }
-    editorPreviewYt = new YT.Player('editor-preview-yt', {
-      videoId: videoId,
-      width: '100%',
-      height: '100%',
-      playerVars: { controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, mute: 1, playsinline: 1 },
-      events: { onReady: () => { try { editorPreviewYt.mute(); editorPreviewYt.pauseVideo(); } catch(_) {} } },
-    });
-  };
-
-  if (typeof YT === 'undefined' || !YT.Player) {
-    let waited = 0;
-    const wait = setInterval(() => {
-      waited += 200;
-      if (typeof YT !== 'undefined' && YT.Player) {
-        clearInterval(wait);
-        build();
-      } else if (waited > 8000) {
-        clearInterval(wait);
-      }
-    }, 200);
-    return;
-  }
-  build();
-}
-
-// HTML5 preview video, kept as a JS reference and moved in/out of the
-// card preview slot on hover. Muted so multiple plays don't collide.
-function initPreviewHtml5(videoUrl) {
-  if (editorPreviewVideo) {
-    try { editorPreviewVideo.pause(); } catch(_) {}
-    editorPreviewVideo.remove();
-  }
-  const v = document.createElement('video');
-  v.src = videoUrl;
-  v.muted = true;
-  v.playsInline = true;
-  v.preload = 'metadata';
-  v.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain';
-  editorPreviewVideo = v;
 }
 
 function initEditorYouTubePlayer(videoId) {
@@ -2110,24 +2069,56 @@ function renderTimelineMarkers() {
     if (cluster.plays.length === 1) {
       const play = cluster.plays[0].play;
       marker.className = `editor-timeline-marker shape-${getMarkerShape(play)} type-${type}`;
-      marker.addEventListener('mouseenter', e => showPlayCard(e.currentTarget, play));
+      marker.addEventListener('mouseenter', e => showMarkerTooltip(e.currentTarget, play));
+      marker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideMarkerTooltip();
+        seekToTime(cluster.startTime);
+        if (editorYtPlayer && editorYtPlayer.playVideo) editorYtPlayer.playVideo();
+        openPlayPopup(play);
+      });
     } else {
       marker.className = `editor-timeline-marker cluster type-${type}`;
       marker.textContent = String(cluster.plays.length);
-      marker.addEventListener('mouseenter', e => showClusterCard(e.currentTarget, cluster.plays));
+      marker.addEventListener('mouseenter', e => showMarkerTooltip(e.currentTarget, {
+        startTime: cluster.plays[0].play.startTime,
+        label: `${cluster.plays.length} מהלכים קרובים`,
+      }));
+      marker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideMarkerTooltip();
+        openClusterPopup(cluster.plays);
+      });
     }
-    marker.addEventListener('mouseleave', hidePlayCard);
-    marker.addEventListener('click', (e) => {
-      e.stopPropagation();
-      seekToTime(cluster.startTime);
-      if (editorYtPlayer && editorYtPlayer.playVideo) editorYtPlayer.playVideo();
-    });
+    marker.addEventListener('mouseleave', hideMarkerTooltip);
 
     track.appendChild(marker);
   }
 }
 
-function showPlayCard(markerEl, play) {
+// Lightweight hover tooltip — just label + timestamp, viewport-positioned.
+function showMarkerTooltip(markerEl, play) {
+  const tooltip = document.getElementById('editor-marker-tooltip');
+  if (!tooltip) return;
+  tooltip.innerHTML = `<span class="tooltip-time">${escapeHtml(play.startTime || '')}</span>${escapeHtml(play.label || '')}`;
+  // Measure after content set so width is accurate
+  const rect = markerEl.getBoundingClientRect();
+  const tipWidth = tooltip.offsetWidth || 200;
+  let left = rect.left + (rect.width / 2) - (tipWidth / 2);
+  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${rect.top - 36}px`;
+  tooltip.classList.add('visible');
+}
+
+function hideMarkerTooltip() {
+  const tooltip = document.getElementById('editor-marker-tooltip');
+  if (tooltip) tooltip.classList.remove('visible');
+}
+
+// Persistent popup card for a single play. Centered, stays open until the
+// user closes it via X / Escape / outside-click / clicking another marker.
+function openPlayPopup(play) {
   const card = document.getElementById('editor-play-card');
   if (!card) return;
 
@@ -2143,40 +2134,28 @@ function showPlayCard(markerEl, play) {
   card.querySelector('.editor-play-card-players').textContent = (play.players || []).join(', ');
   card.querySelector('.editor-play-card-note').textContent = play.note || '';
 
-  // Mount preview into the card slot, then seek shortly after to avoid
-  // thrashing the player when the user sweeps across many markers.
-  const seekTime = parseTimeToSeconds(play.startTime || play.time);
-  const previewSlot = card.querySelector('.editor-play-card-preview');
-  previewSlot.innerHTML = '';
-  previewSlot.style.display = 'block';
-
-  if (editorIsHtml5 && editorPreviewVideo) {
-    previewSlot.appendChild(editorPreviewVideo);
-    clearTimeout(editorPreviewSeekTimeout);
-    editorPreviewSeekTimeout = setTimeout(() => {
-      try { editorPreviewVideo.currentTime = seekTime; } catch(_) {}
-    }, 150);
-  } else if (!editorIsHtml5) {
-    const previewContainer = document.getElementById('editor-preview-container');
-    if (previewContainer) {
-      previewContainer.style.display = 'block';
-      previewSlot.appendChild(previewContainer);
-      clearTimeout(editorPreviewSeekTimeout);
-      editorPreviewSeekTimeout = setTimeout(() => {
-        try {
-          if (editorPreviewYt && editorPreviewYt.seekTo) {
-            editorPreviewYt.seekTo(seekTime, true);
-            if (editorPreviewYt.pauseVideo) editorPreviewYt.pauseVideo();
-          }
-        } catch(_) {}
-      }, 150);
-    }
+  const obsSection = card.querySelector('.editor-play-card-observations');
+  const obsList = card.querySelector('.observations-list');
+  const observations = Array.isArray(play.observations) ? play.observations : [];
+  if (observations.length > 0) {
+    obsSection.style.display = 'block';
+    obsList.innerHTML = observations.map(o => `<li>${escapeHtml(o)}</li>`).join('');
+  } else {
+    obsSection.style.display = 'none';
+    obsList.innerHTML = '';
   }
 
-  positionPlayCard(markerEl, card);
+  card.classList.add('visible');
+  // Defer registering the outside-click handler so the very click that
+  // opened the popup doesn't immediately close it.
+  if (editorPopupOutsideHandler) document.removeEventListener('click', editorPopupOutsideHandler, true);
+  editorPopupOutsideHandler = handleOutsideClick;
+  setTimeout(() => {
+    document.addEventListener('click', editorPopupOutsideHandler, true);
+  }, 0);
 }
 
-function showClusterCard(markerEl, plays) {
+function openClusterPopup(plays) {
   const card = document.getElementById('editor-play-card');
   if (!card) return;
 
@@ -2184,50 +2163,60 @@ function showClusterCard(markerEl, plays) {
   const typeEl = card.querySelector('.editor-play-card-type');
   typeEl.textContent = '';
   typeEl.className = 'editor-play-card-type';
-  card.querySelector('.editor-play-card-label').textContent = 'לחץ כדי לדלג לרגע הראשון';
+  card.querySelector('.editor-play-card-label').textContent = 'בחר מהלך לצפייה';
   card.querySelector('.editor-play-card-players').textContent = '';
-  card.querySelector('.editor-play-card-note').innerHTML = plays.map(p =>
-    `<div style="margin-bottom:4px"><span style="font-family:'DM Mono';color:var(--text2)">${escapeHtml(p.play.startTime || '')}</span> ${escapeHtml(p.play.label || '')}</div>`
+
+  // Stash the play objects so item clicks can recover them by index without
+  // serializing into onclick attributes (which is fragile around quotes).
+  editorClusterPopupPlays = plays.map(p => p.play);
+  card.querySelector('.editor-play-card-note').innerHTML = editorClusterPopupPlays.map((p, idx) =>
+    `<button class="cluster-play-item" type="button" data-cluster-index="${idx}">
+      <span class="cluster-play-time">${escapeHtml(p.startTime || '')}</span>
+      <span>${escapeHtml(p.label || '')}</span>
+    </button>`
   ).join('');
+  card.querySelectorAll('.cluster-play-item').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const idx = parseInt(btn.dataset.clusterIndex, 10);
+      const target = editorClusterPopupPlays[idx];
+      if (!target) return;
+      const seekTime = parseTimeToSeconds(target.startTime || target.time);
+      seekToTime(seekTime);
+      if (editorYtPlayer && editorYtPlayer.playVideo) editorYtPlayer.playVideo();
+      openPlayPopup(target);
+    });
+  });
 
-  // Hide preview for cluster cards (no single timestamp to scrub to)
-  const previewSlot = card.querySelector('.editor-play-card-preview');
-  previewSlot.innerHTML = '';
-  previewSlot.style.display = 'none';
+  card.querySelector('.editor-play-card-observations').style.display = 'none';
 
-  positionPlayCard(markerEl, card);
-}
-
-function positionPlayCard(markerEl, card) {
   card.classList.add('visible');
-  // Measure first
-  const markerRect = markerEl.getBoundingClientRect();
-  const cardWidth = card.offsetWidth || 360;
-  const cardHeight = card.offsetHeight || 200;
-
-  // Center horizontally over marker, clamp to viewport
-  let left = markerRect.left + (markerRect.width / 2) - (cardWidth / 2);
-  left = Math.max(8, Math.min(left, window.innerWidth - cardWidth - 8));
-
-  // Prefer above marker; fall back below if no room
-  let top = markerRect.top - cardHeight - 16;
-  if (top < 8) top = markerRect.bottom + 16;
-
-  card.style.left = `${left}px`;
-  card.style.top = `${top}px`;
+  if (editorPopupOutsideHandler) document.removeEventListener('click', editorPopupOutsideHandler, true);
+  editorPopupOutsideHandler = handleOutsideClick;
+  setTimeout(() => {
+    document.addEventListener('click', editorPopupOutsideHandler, true);
+  }, 0);
 }
 
-function hidePlayCard() {
+function handleOutsideClick(e) {
+  const card = document.getElementById('editor-play-card');
+  if (!card) return;
+  // Don't close if click is inside the card or on a timeline marker (the
+  // marker click handler will swap the card content for the new play).
+  if (card.contains(e.target)) return;
+  if (e.target && e.target.classList && e.target.classList.contains('editor-timeline-marker')) return;
+  closePlayPopup();
+}
+
+function closePlayPopup() {
   const card = document.getElementById('editor-play-card');
   if (!card) return;
   card.classList.remove('visible');
-  // Park the YouTube preview container back on body so its iframe keeps
-  // running in the background (saves re-init on next hover).
-  const previewContainer = document.getElementById('editor-preview-container');
-  if (previewContainer && !editorIsHtml5 && previewContainer.parentElement !== document.body) {
-    document.body.appendChild(previewContainer);
-    previewContainer.style.display = 'none';
+  if (editorPopupOutsideHandler) {
+    document.removeEventListener('click', editorPopupOutsideHandler, true);
+    editorPopupOutsideHandler = null;
   }
+  editorClusterPopupPlays = [];
 }
 
 function startProgressTracking() {
@@ -2324,7 +2313,8 @@ document.addEventListener('keydown', (e) => {
   } else if (e.code === 'ArrowRight') {
     jumpToAdjacentMarker(1);
   } else if (e.code === 'Escape') {
-    hidePlayCard();
+    closePlayPopup();
+    hideMarkerTooltip();
   }
 });
 
