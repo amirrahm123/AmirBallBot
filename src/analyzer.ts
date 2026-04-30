@@ -1499,14 +1499,68 @@ When off_ball_action is ABSENT: existing label composition logic above is unchan
 
 Fade disambiguation reminder: fade_action (off_ball_action) → "ניתוק מסקרין". fadeaway (shot_mechanic) → "פייד-אווי". Both can appear on the same play; compose both ("ניתוק מסקרין לפייד-אווי שלשה של <player>").
 ${iqLayer1Block}
-NOTE STRUCTURE — follow this order:
-1. How did possession start? (from possession_origin)
-2. What was the setup? (from setup field)
-3. What was the decisive action? (from action field)
-4. Coaching observation:
-   - offense: what made this work or fail?
-   - defense: what did we do right?
-   - defensive_failure: what must we fix?
+═══ NOTE WRITING STYLE - CRITICAL ═══
+
+The 'note' field for each play should sound like a real assistant coach narrating film to the head coach. Not a description of what happened (the coach already watched it). NOT generic basketball commentary. Specific cause-and-effect storytelling.
+
+EXAMPLE GOOD NOTE for a successful drive (offensive play):
+"Williams froze the defender with a crossover and after the recovery attempt, used a small bump to create the space he needed for the pullup fadeaway. The defender lost his base on the bump and couldn't contest the shot in time."
+
+WHY THIS IS GOOD:
+- Names specific actions (crossover, recovery, bump, pullup fadeaway)
+- Tells a CHAIN: action → reaction → space → finish
+- Uses coach vocabulary (lost his base, contest in time)
+- Past tense, observational, no advice
+
+EXAMPLE BAD NOTE (DO NOT WRITE THIS WAY):
+"Successful isolation drive that resulted in a made jumper. Effective scoring possession."
+WHY: generic, no story, no cause-and-effect, useless to a coach.
+
+REQUIREMENTS FOR ALL NOTES:
+
+1. Length: 2-3 sentences. Skip filler words.
+2. Use last names only for players (Williams, Hartenstein, Dort - not full names).
+3. Mix Hebrew with English-transliterated basketball terms naturally - the way Israeli coaches actually speak. Examples of natural mix: "קרוסאובר", "פול-אפ פייידאוויי", "פיק אנד רול", "קלוז-אאוט", "ביג-מן".
+4. Tell the CHAIN of cause-and-effect, not just the final result. What led to what.
+5. Use specific action verbs: froze, jumped the screen, recovered late, lost his base, swallowed the screen, hedged hard, sagged off, closed out flat, etc.
+6. Acknowledge uncertainty when present: "looked like he froze on the crossover" instead of "froze on the crossover" if not 100% clear.
+7. Past tense only. Observational, never prescriptive ("should have", "needed to" - FORBIDDEN).
+
+═══ NOTE STYLE BY PLAY TYPE ═══
+
+For SUCCESSFUL OFFENSIVE PLAYS (made shots):
+- Identify the moment that broke the defense (the trigger move)
+- Describe the chain: trigger → defender response → space creation → finish
+- 2 sentences usually enough
+
+For MISSED OFFENSIVE PLAYS:
+- Focus on the breakdown moment - what physically went wrong with the shot mechanics OR what defensive action prevented success
+- Mention what was happening around the shooter (defender position, momentum, contest, available passing options if visible)
+- 2-3 sentences
+
+For DEFENSIVE FAILURES (opponent scored on us) - MOST DETAILED:
+This is where coaches focus most. Get this RIGHT.
+- Identify WHICH of OUR defenders had the primary responsibility
+- Name the specific technique breakdown: late closeout, wrong angle, ball-watching, beat off the dribble, lost on the screen, miscommunication on switch
+- Trace the chain: how did the opponent create the advantage that led to the score
+- Mention if it was scheme-related (rotation broke down, help didn't come) vs individual (defender beaten 1v1)
+- 3 sentences acceptable here for clarity
+
+EXAMPLE GOOD DEFENSIVE BREAKDOWN NOTE:
+"Dort got beat on the initial closeout - came in too flat and the shooter pump-faked him into the air. Once Dort flew by, the help defender (Hartenstein) was a step late rotating from the weak side, leaving an open lane to the rim for the finish."
+
+For DEFENSIVE STOPS (we got the stop):
+- Identify what worked - active hands, good closeout, scheme execution, individual effort
+- 1-2 sentences usually enough
+
+For TRANSITION PLAYS:
+- Note the trigger (steal, defensive rebound, opponent miss)
+- Note who got back and who didn't on the other team
+- 2 sentences
+
+═══ END NOTE STYLE GUIDANCE ═══
+
+Apply this style to all 'note' fields in the enriched output JSON.
 
 COACHING KNOWLEDGE:
 ${brainForPrompt}
