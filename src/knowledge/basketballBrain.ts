@@ -1,133 +1,11 @@
-export const BASKETBALL_BRAIN = `
-=== BASKETBALL BRAIN — COACHING KNOWLEDGE BASE ===
+// Brain knowledge base, split into named sections so each prompt can inject
+// only the slices it actually needs. The full BASKETBALL_BRAIN export is the
+// concatenation of all sections, kept for any caller that still wants the
+// monolithic blob (and so the existing IQ A/B strip-by-header logic in
+// analyzer.ts continues to find the IQ headers).
 
---- PICK AND ROLL OFFENSE (Ettore Messina principles) ---
-
-PURPOSE: Pick and roll creates an advantage and starts
-a drive & kick game. The goal is to read and react,
-not to run rigid plays.
-
-THE 3 CRITICAL PASSES:
-1. Pocket pass — short pass to rolling big cutting
-   to basket while defender is behind him
-2. Throw-back — pass back to the ball handler's
-   original position after he passed to the screener
-3. Skip pass — long cross-court pass to opposite
-   corner when defense collapses
-
-SPACING RULES:
-- Always keep a player in each corner during pick and roll
-- When big pops to perimeter, other big cuts to rim
-- Adjust spacing during the action based on
-  which way the ball is moving
-
-TIMING RULE:
-- Pass while the cutter is getting open,
-  not once he is already open
-- Half second rule: as ball is in the air,
-  decide if you have drive, shot, or swing
-
-VS AGGRESSIVE DEFENSE (hedge/blitz):
-- Use throw-ahead pass over the hedging defender
-- Roller cuts diagonally to middle of paint
-- Look for high-low with big in dunker spot
-
-VS SOFT DEFENSE (drop coverage):
-- Ball handler attacks downhill
-- Throw-behind pass to screener rolling
-  after the ball handler has turned the corner
-- Re-screen is always an option
-
-VS SWITCH DEFENSE:
-- Direct pass to roller is first look
-- High-low action with post mismatch
-- Roller cuts diagonally to make triple switch harder
-- Guard must keep pressure on switched defender
-
---- PICK AND ROLL DEFENSE ---
-
-GUARDING BALL HANDLER:
-- Get up into the offensive player, crowd his hip
-- Force him one direction, do not jump to space
-- Hand low to take away pocket pass first
-- Then hand high to take away hook pass
-
-DROP COVERAGE:
-- Creates guard attacks on the big
-- Corner defender must bump the roller high
-- Staying level with the baseline gives no chance
-  to recover to the corner shooter
-
-HEDGE COVERAGE:
-- Big steps out aggressively on ball handler
-- Leaves roller open — recognize this
-- Ball handler should attack the retreating big
-
-SWITCH COVERAGE:
-- Switch only when below free throw line
-- Late switch on pop shooter — go on second dribble
-- Triple switch is safer from weak side
-
-ICE COVERAGE:
-- Forces ball handler to weak hand toward sideline
-- Big positions higher when sending to weak hand
-- Jump switch on dribble handoffs on the side
-
---- MOTION OFFENSE PRINCIPLES (Popovich/European) ---
-
-CORE PHILOSOPHY:
-- Continuous player and ball movement
-- Every player must be a passer first
-- Pass before the defender can recover
-- Create open shots through screening,
-  cutting and spacing — not isolation
-
-5 PILLARS:
-1. Spacing — players spread floor,
-   create passing lanes and driving gaps
-2. Timing — movement happens simultaneously,
-   not sequentially
-3. Screening — set screens that force
-   defensive decisions
-4. Cutting — attack the basket when
-   your defender watches the ball
-5. Ball movement — pass to move the defense,
-   not just to advance the ball
-
-KEY ACTIONS:
-- Pass and cut — after passing, cut hard
-  to basket before defender recovers
-- Dribble handoff — creates momentum
-  advantage against trailing defender
-- Backdoor cut — when defender overplays,
-  cut hard behind them to the basket
-- Skip pass — when defense rotates one way,
-  skip to opposite side shooter
-
---- DEFENSIVE RECOGNITION ---
-
-2-3 ZONE:
-- Two guards at top, three across the paint
-- Weakness: high post, short corners, skip pass
-- Attack: ball to elbow, skip to opposite corner
-
-MAN TO MAN SWITCHING:
-- All screens are switched
-- Creates potential mismatches
-- Attack the mismatch immediately in post
-  or one-on-one
-
-FULL COURT PRESS:
-- Weakness: long passes over the press,
-  quick guards beat traps
-- Attack: push ball up quickly,
-  look for press break layup
-
-HELP AND RECOVER:
-- Defender steps into driving lane then
-  scrambles back to shooter
-- Weakness: kick out if help rotation is slow
-- Attack: drive, read help, kick to open shooter
+export const BRAIN_VOCABULARY = `
+=== BASKETBALL BRAIN — VOCABULARY ===
 
 --- FIBA RULES (Israeli League uses FIBA, not NBA) ---
 
@@ -226,143 +104,9 @@ MODERN BASKETBALL HEBREW TERMS (use these, not old translations):
 בי-אי-איי = pick and roll ball handler
 בי-איי = pick and roll screener
 
---- COMMON FIBA/ISRAELI LEAGUE ACTIONS ---
+--- COACH ACTION TERMINOLOGY ---
 
-HORNS:
-- Two bigs at elbow, guard attacks between them
-- Creates pick and roll or pick and pop on both sides simultaneously
-- Weakness: Switching leaves perimeter open
-- Strength: Forces defense to make decisions
-
-SPAIN PICK AND ROLL:
-- Standard pick and roll with an additional back screen on the rolling big's defender
-- Creates two actions at once
-- Key read: If back screen works, lob to roller. If not, ball handler turns corner
-
-CHIN SET:
-- Post player sets back screen for cutter, then receives handoff from ball handler
-- Creates confusion between guarding the cut and the handoff
-
-DHO SERIES (Dribble Handoff):
-- Ball handler dribbles toward wing player, hands off while moving
-- Creates momentum mismatch
-- Counter: Reject the screen, attack baseline
-
-FLOPPY ACTION:
-- Two cutters coming off screens on opposite sides of the lane
-- Defense must choose which to follow
-- Best read: Hit the player whose defender helps on the first cutter
-
-EARLY OFFENSE:
-- After defensive rebound, push ball before defense sets
-- Look for: 1. Trailer 3 (big trailing for three) 2. Rim runner (cutter to basket) 3. Early post entry
-- Israeli leagues run this constantly
-
-BLOB (Baseline Out of Bounds):
-- Floppy from baseline
-- Stack action
-- Box set
-- Most common in Israeli league: Box set with double screen
-
-SLOB (Sideline Out of Bounds):
-- Quick hitters off sideline
-- Most dangerous because defense is often unprepared
-
---- OFF-BALL MOVEMENT INTELLIGENCE ---
-
-SPACING VIOLATIONS — flag these in notes:
-- Two offensive players in the same court zone
-- Player standing watching ball handler without moving
-- Corner player drifting inside the 3-point arc
-- No movement when ball enters the post
-
-SPACING EXCELLENCE — highlight these:
-- Weak side player lifts as ball handler drives
-- Corner player holds position during drive
-- Opposite wing relocates immediately on skip pass
-- Big sets second screen after first action fails
-
-CUTTING READS — correct vs missed:
-- Backdoor cut when defender overplays = correct read
-- Basket cut when defender watches ball = correct read
-- Player standing when lane is open = missed opportunity
-- Late cut after the ball already moved = poor timing
-
-DEFENSIVE PRINCIPLES — evaluate these:
-- Help position: is helper in passing lane or too far?
-- Ball pressure: forcing weak hand or giving baseline?
-- Closeout technique: high hands and under control?
-- Transition defense: getting back or gambling for steal?
-- Rotation: does the second defender rotate on drive?
-
---- GAME FLOW PATTERNS ---
-
-After analyzing all plays, Claude must identify:
-
-REPEATED ACTIONS:
-- Did the same play type appear 3+ times?
-- Which repeated actions scored and which failed?
-- Is the offense hunting a specific defensive weakness?
-
-MOMENTUM RUNS:
-- Did scoring come in clusters or evenly distributed?
-- What caused scoring runs — turnovers, offensive
-  rebounds, or made shots leading to more possessions?
-
-PERSONNEL PATTERNS:
-- Which player created the most advantages?
-  (not just who scored, but who initiated actions)
-- Which defender was targeted repeatedly?
-- Which matchup was exploited most?
-
-STRUCTURAL READ:
-- Was the offense transition-heavy or half-court?
-- Was it pick-and-roll dominant or isolation heavy?
-- Did the team run organized sets or freelance?
-
---- GAME INTELLIGENCE REPORT ---
-
-After all play notes are written, Claude must add
-a separate section called "דוח משחק" containing:
-
-1. PATTERN SUMMARY (1-2 sentences):
-   What was the dominant offensive pattern?
-   Example: "OKC attacked the Lakers drop coverage
-   4 times via side pick and roll, scoring 3 times."
-
-2. DEFENSIVE FINDING (1-2 sentences):
-   What defensive pattern emerged?
-   Example: "The defense allowed corner 3s repeatedly
-   when help collapsed on drives — 3 open looks given."
-
-3. KEY PLAYER IMPACT (1 sentence per player, max 3):
-   Who made the biggest impact and how?
-   Not just stats — what actions created advantages?
-
-4. COACHING ACTION (3 bullet points):
-   Specific things to work on in the next practice.
-   Based on what the data actually showed.
-   Each bullet = one drill or tactical adjustment.
-
---- COACHING INSIGHT FRAMEWORK ---
-
-For every play, Claude must identify and explain:
-
-1. WHAT CREATED THE OPPORTUNITY:
-   - Was it defensive pressure that forced a mistake?
-   - Was it off-ball movement that created space?
-   - Was it a pick and roll read?
-   - Was it a transition numbers advantage?
-
-2. WHAT WAS EXECUTED WELL OR POORLY:
-   - Did the ball handler make the right read?
-   - Did the spacing support the action?
-   - Did the defense make a mistake or get beaten?
-
-3. WHAT IS THE COACHING CUE:
-   - What should the coach reinforce or correct?
-   - Is this a teachable moment for spacing, timing,
-     decision making, or execution?
+Coach terminology for actions: closeout (flat/sharp/hard), white line awareness, hitting and getting (rebound contact), sprinting lanes, swallow the screen, hedge hard, drop coverage, ICE the screen, gap discipline, helpside rotations, tag the roller, recover (vs over-rotate), bump the cutter.
 
 --- PLAY TYPE OPERATIONAL DEFINITIONS (from v2) ---
 
@@ -418,117 +162,6 @@ iso = one player isolated 1-on-1 with space cleared by 4 teammates. Goal: exploi
 2על1 = two offensive players vs one defender. Note: did ball handler draw the defender and pass? Or drive themselves?
 
 3על2 = three offensive players vs two defenders. Note: where did the defense break down and which player got the open look?
-
---- DEFENSIVE PLAYS — WHEN TO WRITE A NOTE ---
-
-WRITE a defensive note when:
-- Block (חסימה) that changes possession or creates transition
-- Steal (חטיפה) that is active — intercepted pass, poke from dribble, or causes fast break. NOT routine loose ball.
-- Forced contested shot after good defensive positioning
-- Defensive stop on pick and roll — note which coverage was used
-- Good box out leading to defensive rebound that prevents second chance
-- Defensive rebound that immediately creates transition opportunity
-
-DO NOT WRITE for:
-- Routine defensive rebound with no transition
-- Standard free throw defense
-- Normal substitution or timeout
-
-DEFENSIVE PLAY THAT CREATES OFFENSE:
-If a clip starts with a block, steal, or deflection — ALWAYS write as the FIRST line of the note:
-"המהלך התחיל ב[חסימה/חטיפה/סטייה] של [player name]"
-Then describe what the offense did with it.
-
---- COMPOUND PLAYS: HOME MISTAKE + OPPONENT SCORE ---
-
-When a clip shows BOTH a home team mistake AND the opponent scoring from it — write ONE detailed card that covers the full sequence:
-
-מה קרה: [home team mistake type — bad pass/lost ball/bad decision]
-מי ביצע: [home team player who made the mistake, or שחקן לא מזוהה]
-הטעות: [exactly what the home team player did wrong]
-תגובת היריב: [what the opponent did to capitalize — fast break/score/transition — describe without crediting them]
-תוצאה: [final result at end of clip — opponent scored / home team stopped them]
-אם נכשל: [what the home team player should have done instead]
-משמעות: [tactical lesson for the coach — what pattern does this reveal]
-VERDICT: ❌ [always negative when home team mistake led to opponent advantage]
-
-RULE: Never write two separate cards for the same sequence. One card covers the full story — home mistake + what followed.
-RULE: Do NOT credit the opponent player by name. Describe their action only: "היריב ניצל את האיבוד ורץ למתפרצת"
-
---- VERDICT MARKERS (✅/❌/⚠️) ---
-
-✅ = positive result for the home team: score, assist, foul drawn, steal, block that leads to possession, defensive stop, forced bad shot
-❌ = negative result for the home team: lost ball, missed shot after bad decision, unnecessary foul, failed drive with no advantage, fastbreak not finished
-⚠️ = advantage existed but was NOT used — player had numerical advantage or open look but made wrong decision. Coach needs to see this.
-
-AND-ONE (score + foul drawn) = always ✅ excellent
-Open shot created but missed = ✅ (good execution, execution at rim failed — praise the creation)
-Fastbreak slowed to halfcourt with nothing = DO NOT WRITE
-Play with unclear outcome at clip end = DO NOT WRITE
-
---- ANALYSIS STRUCTURE PER PLAY NOTE ---
-
-מה קרה: [exact play type from the list above]
-מי ביצע: [home team player name from roster, or שחקן לא מזוהה]
-קבוצה: [team name that performed the action — identify by jersey color when provided in context]
-תוצאה: [התוצאה הסופית בסוף הקליפ]
-אם נכשל: [ONLY if ❌ or ⚠️ — what went wrong AND what should have been done instead]
-משמעות: [one tactical sentence for the coach]
-VERDICT: ✅/❌/⚠️ [one sentence reason]
-
-PLAYER CREDIT:
-- If two players involved: write both. Scorer gets credit for points. Passer gets credit for assist.
-- Always note the assist when it exists — it is tactically important.
-- Defensive player who caused the turnover always gets credit even if they don't score.
-- Only analyze HOME TEAM players. Do not write notes about opposing team plays.
-
---- SHOT CLOCK GUIDANCE ---
-
-שעון התקפי (אופציונלי — רק אם נראה בקליפ):
-- קרא את שעון ה-24 מהסקורבורד הנראה בקליפ
-- אם השעון מתחת ל-5 שניות: הוסף "תחת לחץ שעון" לתיאור המהלך
-- אם השעון בין 5-10 שניות ונלקחת ירייה: הוסף "ירייה תחת לחץ"
-- אם השעון מגיע ל-0 בלי ירייה: תייג את המהלך כ"הפרת שעון התקפי"
-- אם השעון לא נראה בבירור בקליפ — התעלם לחלוטין, אל תנחש. שתיקה עדיפה על מספר שגוי.
-
---- WHAT NOT TO ANALYZE / WHAT TO ANALYZE ---
-
-DO NOT ANALYZE:
-- Free throws — never
-- Timeouts — never
-- Standard player substitutions — never
-- Out of bounds with no tactical significance — never
-- Plays with no clear outcome at clip end — never
-- Routine defensive rebounds with no transition — never
-- Fastbreaks that dissolved into halfcourt with nothing created — never
-
-ANALYZE:
-- Out of bounds dead ball plays that reveal tactical patterns — yes
-- Shot clock violations under defensive pressure — yes
-- Any play where a tactical advantage was created OR missed
-
---- STRICT QUALITY FILTER ---
-
-Write a note if BOTH are true:
-1. You can see basketball action involving the home team
-2. There is a visible outcome at the end of the clip
-
-כלל ברזל — איכות על פני כמות:
-- החזר בין 4 ל-8 מהלכים לכל 5 דקות של וידאו
-- בחר רק את המהלכים הכי משמעותיים טקטית — מהלכים שמאמן היה עוצר את הסרטון בשבילם
-- אל תרשום: סל פשוט, פאסה רגילה, ריבאונד שגרתי
-- כן לרשום: מהלך מורכב, טעות טקטית, מצב לחץ, אלי אופ, חטיפה מובילה למתפרצת, הגנה יוצאת דופן
-- אם קליפ מכיל פעולה שגרתית — תאר אותה בקצרה, אל תדלג לחלוטין
-- עדיף 4 מהלכים מדויקים על 18 מהלכים ממוצעים
-
---- INSIGHTS SEMANTICS ---
-
-INSIGHTS — 3 to 4 per video:
-good = pattern working well for the team, tactical strength, something to build on
-warn = advantage that could have been exploited but wasn't — coach needs to address
-bad = recurring problem, tactical weakness, something that cost the team
-
-Each insight must be actionable — the coach must be able to do something with it after reading it.
 
 --- SHOT TYPE IDENTIFICATION (VISUAL RULES) ---
 
@@ -712,6 +345,153 @@ Each insight must be actionable — the coach must be able to do something with 
 7. שתי פעולות ללא כדור באותה התקפה: אם רואים שני חיתוכים או שני סקרינים ברצף, תייג רק את הפעולה שיצרה את הזדמנות ההבקעה — הפעולה האחרונה ברצף לפני הקבלה והסיום. הפעולות הקודמות הן "setup" ונכנסות לתיאור הכללי, לא לשדה off_ball_action.
 
 8. כלל זהב — בספק, חזור לגנרי: אם המכניקה המדויקת לא ברורה מהזווית, רשום תווית כללית — "חיתוך" לחיתוכים או "סקרין" לפעולות סקרין — במקום להמציא ספציפיות. חיתוך כללי נכון עדיף תמיד על "UCLA" שגוי.
+`;
+
+export const BRAIN_OFFENSIVE_PRINCIPLES = `
+=== BASKETBALL BRAIN — OFFENSIVE PRINCIPLES ===
+
+--- PICK AND ROLL OFFENSE (Ettore Messina principles) ---
+
+PURPOSE: Pick and roll creates an advantage and starts
+a drive & kick game. The goal is to read and react,
+not to run rigid plays.
+
+THE 3 CRITICAL PASSES:
+1. Pocket pass — short pass to rolling big cutting
+   to basket while defender is behind him
+2. Throw-back — pass back to the ball handler's
+   original position after he passed to the screener
+3. Skip pass — long cross-court pass to opposite
+   corner when defense collapses
+
+SPACING RULES:
+- Always keep a player in each corner during pick and roll
+- When big pops to perimeter, other big cuts to rim
+- Adjust spacing during the action based on
+  which way the ball is moving
+
+TIMING RULE:
+- Pass while the cutter is getting open,
+  not once he is already open
+- Half second rule: as ball is in the air,
+  decide if you have drive, shot, or swing
+
+VS AGGRESSIVE DEFENSE (hedge/blitz):
+- Use throw-ahead pass over the hedging defender
+- Roller cuts diagonally to middle of paint
+- Look for high-low with big in dunker spot
+
+VS SOFT DEFENSE (drop coverage):
+- Ball handler attacks downhill
+- Throw-behind pass to screener rolling
+  after the ball handler has turned the corner
+- Re-screen is always an option
+
+VS SWITCH DEFENSE:
+- Direct pass to roller is first look
+- High-low action with post mismatch
+- Roller cuts diagonally to make triple switch harder
+- Guard must keep pressure on switched defender
+
+--- MOTION OFFENSE PRINCIPLES (Popovich/European) ---
+
+CORE PHILOSOPHY:
+- Continuous player and ball movement
+- Every player must be a passer first
+- Pass before the defender can recover
+- Create open shots through screening,
+  cutting and spacing — not isolation
+
+5 PILLARS:
+1. Spacing — players spread floor,
+   create passing lanes and driving gaps
+2. Timing — movement happens simultaneously,
+   not sequentially
+3. Screening — set screens that force
+   defensive decisions
+4. Cutting — attack the basket when
+   your defender watches the ball
+5. Ball movement — pass to move the defense,
+   not just to advance the ball
+
+KEY ACTIONS:
+- Pass and cut — after passing, cut hard
+  to basket before defender recovers
+- Dribble handoff — creates momentum
+  advantage against trailing defender
+- Backdoor cut — when defender overplays,
+  cut hard behind them to the basket
+- Skip pass — when defense rotates one way,
+  skip to opposite side shooter
+
+--- COMMON FIBA/ISRAELI LEAGUE ACTIONS ---
+
+HORNS:
+- Two bigs at elbow, guard attacks between them
+- Creates pick and roll or pick and pop on both sides simultaneously
+- Weakness: Switching leaves perimeter open
+- Strength: Forces defense to make decisions
+
+SPAIN PICK AND ROLL:
+- Standard pick and roll with an additional back screen on the rolling big's defender
+- Creates two actions at once
+- Key read: If back screen works, lob to roller. If not, ball handler turns corner
+
+CHIN SET:
+- Post player sets back screen for cutter, then receives handoff from ball handler
+- Creates confusion between guarding the cut and the handoff
+
+DHO SERIES (Dribble Handoff):
+- Ball handler dribbles toward wing player, hands off while moving
+- Creates momentum mismatch
+- Counter: Reject the screen, attack baseline
+
+FLOPPY ACTION:
+- Two cutters coming off screens on opposite sides of the lane
+- Defense must choose which to follow
+- Best read: Hit the player whose defender helps on the first cutter
+
+EARLY OFFENSE:
+- After defensive rebound, push ball before defense sets
+- Look for: 1. Trailer 3 (big trailing for three) 2. Rim runner (cutter to basket) 3. Early post entry
+- Israeli leagues run this constantly
+
+BLOB (Baseline Out of Bounds):
+- Floppy from baseline
+- Stack action
+- Box set
+- Most common in Israeli league: Box set with double screen
+
+SLOB (Sideline Out of Bounds):
+- Quick hitters off sideline
+- Most dangerous because defense is often unprepared
+
+--- OFF-BALL MOVEMENT INTELLIGENCE ---
+
+SPACING VIOLATIONS — flag these in notes:
+- Two offensive players in the same court zone
+- Player standing watching ball handler without moving
+- Corner player drifting inside the 3-point arc
+- No movement when ball enters the post
+
+SPACING EXCELLENCE — highlight these:
+- Weak side player lifts as ball handler drives
+- Corner player holds position during drive
+- Opposite wing relocates immediately on skip pass
+- Big sets second screen after first action fails
+
+CUTTING READS — correct vs missed:
+- Backdoor cut when defender overplays = correct read
+- Basket cut when defender watches ball = correct read
+- Player standing when lane is open = missed opportunity
+- Late cut after the ball already moved = poor timing
+
+DEFENSIVE PRINCIPLES — evaluate these:
+- Help position: is helper in passing lane or too far?
+- Ball pressure: forcing weak hand or giving baseline?
+- Closeout technique: high hands and under control?
+- Transition defense: getting back or gambling for steal?
+- Rotation: does the second defender rotate on drive?
 
 --- BASKETBALL IQ — LAYER 1: SHOT QUALITY PRINCIPLES ---
 
@@ -810,5 +590,306 @@ Each insight must be actionable — the coach must be able to do something with 
 - תווית: "סטפ-באק שלשה של מוטלי — החטיא ❌"
 - הערת מאמן: "סנטר עוצר לסטפ-באק שלשה בעימות עם 16 שניות על השעון ושני חברי קבוצה פנויים בצד החלש. כל ארבעת הגורמים מצביעים לכיוון מסירה — זריקה שלא צריכה לקרות. נדבר על המצב הזה בחדר הווידאו."
 `;
+
+export const BRAIN_DEFENSIVE_PRINCIPLES = `
+=== BASKETBALL BRAIN — DEFENSIVE PRINCIPLES ===
+
+--- PICK AND ROLL DEFENSE ---
+
+GUARDING BALL HANDLER:
+- Get up into the offensive player, crowd his hip
+- Force him one direction, do not jump to space
+- Hand low to take away pocket pass first
+- Then hand high to take away hook pass
+
+DROP COVERAGE:
+- Creates guard attacks on the big
+- Corner defender must bump the roller high
+- Staying level with the baseline gives no chance
+  to recover to the corner shooter
+
+HEDGE COVERAGE:
+- Big steps out aggressively on ball handler
+- Leaves roller open — recognize this
+- Ball handler should attack the retreating big
+
+SWITCH COVERAGE:
+- Switch only when below free throw line
+- Late switch on pop shooter — go on second dribble
+- Triple switch is safer from weak side
+
+ICE COVERAGE:
+- Forces ball handler to weak hand toward sideline
+- Big positions higher when sending to weak hand
+- Jump switch on dribble handoffs on the side
+
+--- DEFENSIVE RECOGNITION ---
+
+2-3 ZONE:
+- Two guards at top, three across the paint
+- Weakness: high post, short corners, skip pass
+- Attack: ball to elbow, skip to opposite corner
+
+MAN TO MAN SWITCHING:
+- All screens are switched
+- Creates potential mismatches
+- Attack the mismatch immediately in post
+  or one-on-one
+
+FULL COURT PRESS:
+- Weakness: long passes over the press,
+  quick guards beat traps
+- Attack: push ball up quickly,
+  look for press break layup
+
+HELP AND RECOVER:
+- Defender steps into driving lane then
+  scrambles back to shooter
+- Weakness: kick out if help rotation is slow
+- Attack: drive, read help, kick to open shooter
+
+--- DEFENSIVE PLAYS — WHEN TO WRITE A NOTE ---
+
+WRITE a defensive note when:
+- Block (חסימה) that changes possession or creates transition
+- Steal (חטיפה) that is active — intercepted pass, poke from dribble, or causes fast break. NOT routine loose ball.
+- Forced contested shot after good defensive positioning
+- Defensive stop on pick and roll — note which coverage was used
+- Good box out leading to defensive rebound that prevents second chance
+- Defensive rebound that immediately creates transition opportunity
+
+DO NOT WRITE for:
+- Routine defensive rebound with no transition
+- Standard free throw defense
+- Normal substitution or timeout
+
+DEFENSIVE PLAY THAT CREATES OFFENSE:
+If a clip starts with a block, steal, or deflection — ALWAYS write as the FIRST line of the note:
+"המהלך התחיל ב[חסימה/חטיפה/סטייה] של [player name]"
+Then describe what the offense did with it.
+`;
+
+export const BRAIN_OBSERVATION_FOCUS = `
+=== BASKETBALL BRAIN — OBSERVATION FOCUS (for negative play analysis) ===
+
+--- COMPOUND PLAYS: HOME MISTAKE + OPPONENT SCORE ---
+
+When a clip shows BOTH a home team mistake AND the opponent scoring from it — write ONE detailed card that covers the full sequence:
+
+מה קרה: [home team mistake type — bad pass/lost ball/bad decision]
+מי ביצע: [home team player who made the mistake, or שחקן לא מזוהה]
+הטעות: [exactly what the home team player did wrong]
+תגובת היריב: [what the opponent did to capitalize — fast break/score/transition — describe without crediting them]
+תוצאה: [final result at end of clip — opponent scored / home team stopped them]
+אם נכשל: [what the home team player should have done instead]
+משמעות: [tactical lesson for the coach — what pattern does this reveal]
+VERDICT: ❌ [always negative when home team mistake led to opponent advantage]
+
+RULE: Never write two separate cards for the same sequence. One card covers the full story — home mistake + what followed.
+RULE: Do NOT credit the opponent player by name. Describe their action only: "היריב ניצל את האיבוד ורץ למתפרצת"
+
+--- VERDICT MARKERS (✅/❌/⚠️) ---
+
+✅ = positive result for the home team: score, assist, foul drawn, steal, block that leads to possession, defensive stop, forced bad shot
+❌ = negative result for the home team: lost ball, missed shot after bad decision, unnecessary foul, failed drive with no advantage, fastbreak not finished
+⚠️ = advantage existed but was NOT used — player had numerical advantage or open look but made wrong decision. Coach needs to see this.
+
+AND-ONE (score + foul drawn) = always ✅ excellent
+Open shot created but missed = ✅ (good execution, execution at rim failed — praise the creation)
+Fastbreak slowed to halfcourt with nothing = DO NOT WRITE
+Play with unclear outcome at clip end = DO NOT WRITE
+
+--- ANALYSIS STRUCTURE PER PLAY NOTE ---
+
+מה קרה: [exact play type from the list above]
+מי ביצע: [home team player name from roster, or שחקן לא מזוהה]
+קבוצה: [team name that performed the action — identify by jersey color when provided in context]
+תוצאה: [התוצאה הסופית בסוף הקליפ]
+אם נכשל: [ONLY if ❌ or ⚠️ — what went wrong AND what should have been done instead]
+משמעות: [one tactical sentence for the coach]
+VERDICT: ✅/❌/⚠️ [one sentence reason]
+
+PLAYER CREDIT:
+- If two players involved: write both. Scorer gets credit for points. Passer gets credit for assist.
+- Always note the assist when it exists — it is tactically important.
+- Defensive player who caused the turnover always gets credit even if they don't score.
+- Only analyze HOME TEAM players. Do not write notes about opposing team plays.
+
+--- SHOT CLOCK GUIDANCE ---
+
+שעון התקפי (אופציונלי — רק אם נראה בקליפ):
+- קרא את שעון ה-24 מהסקורבורד הנראה בקליפ
+- אם השעון מתחת ל-5 שניות: הוסף "תחת לחץ שעון" לתיאור המהלך
+- אם השעון בין 5-10 שניות ונלקחת ירייה: הוסף "ירייה תחת לחץ"
+- אם השעון מגיע ל-0 בלי ירייה: תייג את המהלך כ"הפרת שעון התקפי"
+- אם השעון לא נראה בבירור בקליפ — התעלם לחלוטין, אל תנחש. שתיקה עדיפה על מספר שגוי.
+
+--- WHAT NOT TO ANALYZE / WHAT TO ANALYZE ---
+
+DO NOT ANALYZE:
+- Free throws — never
+- Timeouts — never
+- Standard player substitutions — never
+- Out of bounds with no tactical significance — never
+- Plays with no clear outcome at clip end — never
+- Routine defensive rebounds with no transition — never
+- Fastbreaks that dissolved into halfcourt with nothing created — never
+
+ANALYZE:
+- Out of bounds dead ball plays that reveal tactical patterns — yes
+- Shot clock violations under defensive pressure — yes
+- Any play where a tactical advantage was created OR missed
+
+--- STRICT QUALITY FILTER ---
+
+Write a note if BOTH are true:
+1. You can see basketball action involving the home team
+2. There is a visible outcome at the end of the clip
+
+כלל ברזל — איכות על פני כמות:
+- החזר בין 4 ל-8 מהלכים לכל 5 דקות של וידאו
+- בחר רק את המהלכים הכי משמעותיים טקטית — מהלכים שמאמן היה עוצר את הסרטון בשבילם
+- אל תרשום: סל פשוט, פאסה רגילה, ריבאונד שגרתי
+- כן לרשום: מהלך מורכב, טעות טקטית, מצב לחץ, אלי אופ, חטיפה מובילה למתפרצת, הגנה יוצאת דופן
+- אם קליפ מכיל פעולה שגרתית — תאר אותה בקצרה, אל תדלג לחלוטין
+- עדיף 4 מהלכים מדויקים על 18 מהלכים ממוצעים
+
+--- LOOKING BEYOND THE BALL HANDLER ---
+
+When analyzing failed plays, look beyond the ball-handler and primary defender. Describe where the OTHER 4 (non-ball) players were positioned. Was help defense in proper rotation? Was offensive spacing correct (proper distance, lift, fill)? Did off-ball cuts happen? Did the closest defender to the ball-handler get adequate help? These off-ball details often explain the breakdown more than the on-ball action.
+`;
+
+export const BRAIN_INSIGHT_FRAMEWORK = `
+=== BASKETBALL BRAIN — INSIGHT FRAMEWORK (KPIs that matter for winning) ===
+
+--- GAME FLOW PATTERNS ---
+
+After analyzing all plays, Claude must identify:
+
+REPEATED ACTIONS:
+- Did the same play type appear 3+ times?
+- Which repeated actions scored and which failed?
+- Is the offense hunting a specific defensive weakness?
+
+MOMENTUM RUNS:
+- Did scoring come in clusters or evenly distributed?
+- What caused scoring runs — turnovers, offensive
+  rebounds, or made shots leading to more possessions?
+
+PERSONNEL PATTERNS:
+- Which player created the most advantages?
+  (not just who scored, but who initiated actions)
+- Which defender was targeted repeatedly?
+- Which matchup was exploited most?
+
+STRUCTURAL READ:
+- Was the offense transition-heavy or half-court?
+- Was it pick-and-roll dominant or isolation heavy?
+- Did the team run organized sets or freelance?
+
+--- GAME INTELLIGENCE REPORT ---
+
+After all play notes are written, Claude must add
+a separate section called "דוח משחק" containing:
+
+1. PATTERN SUMMARY (1-2 sentences):
+   What was the dominant offensive pattern?
+   Example: "OKC attacked the Lakers drop coverage
+   4 times via side pick and roll, scoring 3 times."
+
+2. DEFENSIVE FINDING (1-2 sentences):
+   What defensive pattern emerged?
+   Example: "The defense allowed corner 3s repeatedly
+   when help collapsed on drives — 3 open looks given."
+
+3. KEY PLAYER IMPACT (1 sentence per player, max 3):
+   Who made the biggest impact and how?
+   Not just stats — what actions created advantages?
+
+4. COACHING ACTION (3 bullet points):
+   Specific things to work on in the next practice.
+   Based on what the data actually showed.
+   Each bullet = one drill or tactical adjustment.
+
+--- COACHING INSIGHT FRAMEWORK ---
+
+For every play, Claude must identify and explain:
+
+1. WHAT CREATED THE OPPORTUNITY:
+   - Was it defensive pressure that forced a mistake?
+   - Was it off-ball movement that created space?
+   - Was it a pick and roll read?
+   - Was it a transition numbers advantage?
+
+2. WHAT WAS EXECUTED WELL OR POORLY:
+   - Did the ball handler make the right read?
+   - Did the spacing support the action?
+   - Did the defense make a mistake or get beaten?
+
+3. WHAT IS THE COACHING CUE:
+   - What should the coach reinforce or correct?
+   - Is this a teachable moment for spacing, timing,
+     decision making, or execution?
+
+--- INSIGHTS SEMANTICS ---
+
+INSIGHTS — 3 to 4 per video:
+good = pattern working well for the team, tactical strength, something to build on
+warn = advantage that could have been exploited but wasn't — coach needs to address
+bad = recurring problem, tactical weakness, something that cost the team
+
+Each insight must be actionable — the coach must be able to do something with it after reading it.
+
+--- EMPIRICAL KPI FRAMEWORK ---
+
+Empirical research on basketball KPIs identifies these as the strongest predictors of winning:
+1. Defensive rebound percentage (most consistent across studies)
+2. Turnover differential
+3. Field goal percentage (especially close range)
+4. Transition/fast break success rate
+When analyzing patterns from this game, prioritize observations about these areas over less predictive metrics like total points or 3-point volume.
+`;
+
+export const BRAIN_HIGH_ATTENTION_PLAYS = `
+═══ PLAYS THAT REQUIRE THE DEEPEST ANALYTICAL ATTENTION ═══
+
+Not all plays carry equal coaching value. Apply maximum analytical depth to these categories - they are where coaching insight matters most:
+
+PRIORITY 1 - POSSESSION-CRITICAL FAILURES (highest attention):
+- Lost balls / turnovers (any cause: bad passes, traveling, palming, kicked balls, offensive fouls, shot clock violations, double dribbles)
+- Offensive fouls drawn against the team (charges, illegal screens, push-offs)
+- Wrong reads (player chose wrong option - shot when pass was better, drove when shot was open, etc.)
+- Failed defensive rebounds (opponent got the offensive board)
+
+PRIORITY 2 - HIGH-VALUE OUTCOMES (high attention):
+- Made shots in critical moments (clutch time, transition, after timeout)
+- Defensive rebounds that ended opponent possessions
+- Successful defensive stops (especially against star players)
+- Forced turnovers by the team
+
+PRIORITY 3 - DECISION QUALITY (high attention regardless of outcome):
+- Possessions where the read was correct vs incorrect (independent of whether the shot went in)
+- A made shot from a bad read is still a coaching moment
+- A missed shot from a great read is still a coaching success
+
+For PRIORITY 1 plays especially: the analytical note should:
+- Identify WHO made the wrong read or committed the error
+- Explain WHY the wrong choice was made (defensive pressure, time/score situation, lack of help, missed cue)
+- Describe WHAT the better option was that existed in the moment (without telling the coach what 'should' have happened - just describing what was available)
+- For rebound failures specifically: identify which player(s) failed to box out or contest, where the ball came off, who collected it for the opponent
+
+For PRIORITY 1 observations on negative plays: lean into the breakdown chain. These plays often have multiple cascading mistakes - identify the originating mistake that triggered the cascade, not just the final visible error.
+
+DO NOT artificially inflate attention to mundane plays. A simple made jumper in flow doesn't need deep analysis. A turnover where the team's spacing collapsed and three players were out of position DOES.
+`;
+
+export const BASKETBALL_BRAIN = [
+  BRAIN_VOCABULARY,
+  BRAIN_OFFENSIVE_PRINCIPLES,
+  BRAIN_DEFENSIVE_PRINCIPLES,
+  BRAIN_OBSERVATION_FOCUS,
+  BRAIN_INSIGHT_FRAMEWORK,
+  BRAIN_HIGH_ATTENTION_PLAYS,
+].join('\n');
 
 export default BASKETBALL_BRAIN;

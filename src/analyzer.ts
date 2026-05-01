@@ -4,7 +4,14 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { TeamKnowledge, Job } from './database';
-import BASKETBALL_BRAIN from './knowledge/basketballBrain';
+import {
+  BRAIN_VOCABULARY,
+  BRAIN_OFFENSIVE_PRINCIPLES,
+  BRAIN_DEFENSIVE_PRINCIPLES,
+  BRAIN_OBSERVATION_FOCUS,
+  BRAIN_INSIGHT_FRAMEWORK,
+  BRAIN_HIGH_ATTENTION_PLAYS,
+} from './knowledge/basketballBrain';
 
 /**
  * Pull recent coach corrections from MongoDB and format them as a Hebrew
@@ -533,6 +540,10 @@ Important plays are ALL of these, equally important:
 CRITICAL: Misses and turnovers are AS IMPORTANT AS made baskets. Coaches study failures more than successes. Do not skew your selection toward highlight moments.
 
 INCLUSION PHILOSOPHY: When in doubt, INCLUDE. A false-positive timestamp is harmless (the per-clip analyzer will inspect it). A false-negative loses a play permanently. Bias toward over-inclusion.
+
+${BRAIN_HIGH_ATTENTION_PLAYS}
+
+Use this priority framework when triaging timestamps. Priority 1 plays (possession-critical failures) should NEVER be missed. If the 25-timestamp limit is approaching, drop low-attention made baskets in flow before dropping any Priority 1 play.
 
 Return ONLY a valid JSON array of timestamp strings in MM:SS format.
 Example: ["02:34", "04:11", "07:22", "13:05"]
@@ -1247,9 +1258,13 @@ async function enrichPlaysWithClaude(
     '--- BASKETBALL IQ — LAYER 1: SHOT QUALITY PRINCIPLES ---',
     '--- IQ CONTEXTUAL ADJUSTMENTS ---',
   ];
+  // Enrichment gets only the sections it needs: vocabulary + both sides' principles.
+  // The IQ Layer 1 + IQ Contextual Adjustments sections live inside OFFENSIVE,
+  // so the existing A/B strip-by-header logic still finds them.
+  const enrichmentBrain = [BRAIN_VOCABULARY, BRAIN_OFFENSIVE_PRINCIPLES, BRAIN_DEFENSIVE_PRINCIPLES].join('\n');
   const { stripped: brainForPrompt, removed: strippedSections } = IQ_LAYER_1_ENABLED
-    ? { stripped: BASKETBALL_BRAIN, removed: [] as string[] }
-    : stripBrainSections(BASKETBALL_BRAIN, IQ_BRAIN_SECTION_HEADERS);
+    ? { stripped: enrichmentBrain, removed: [] as string[] }
+    : stripBrainSections(enrichmentBrain, IQ_BRAIN_SECTION_HEADERS);
   console.log(`🧪 Brain sections stripped for A/B: ${strippedSections.join(', ') || 'none'}`);
 
   // 🎽 Team ID — batch tallies computed while we scan plays for IQ eligibility
@@ -1511,6 +1526,10 @@ When off_ball_action is ABSENT: existing label composition logic above is unchan
 
 Fade disambiguation reminder: fade_action (off_ball_action) → "ניתוק מסקרין". fadeaway (shot_mechanic) → "פייד-אווי". Both can appear on the same play; compose both ("ניתוק מסקרין לפייד-אווי שלשה של <player>").
 ${iqLayer1Block}
+${BRAIN_HIGH_ATTENTION_PLAYS}
+
+For PRIORITY 1 plays, your note should be 3 sentences (not 2) to capture the breakdown chain. For PRIORITY 3 (correct read but missed) and PRIORITY 2 (clean made shots), 2 sentences is fine.
+
 ═══ NOTE WRITING STYLE - CRITICAL ═══
 
 The 'note' field for each play should sound like a real assistant coach narrating film to the head coach. Not a description of what happened (the coach already watched it). NOT generic basketball commentary. Specific cause-and-effect storytelling.
@@ -1673,6 +1692,14 @@ async function generateInsightsFromPlays(
       content: `Based on these basketball plays from a game, provide coaching insights in Hebrew.
 Return ONLY a valid JSON array, maximum 4 insights, no explanation or markdown:
 [{"type":"good|warn|bad","title":"Hebrew title","body":"Hebrew explanation"}]
+
+${BRAIN_INSIGHT_FRAMEWORK}
+
+${BRAIN_OFFENSIVE_PRINCIPLES}
+
+${BRAIN_HIGH_ATTENTION_PLAYS}
+
+When generating insights, weight your pattern detection toward Priority 1 events. A pattern in turnovers or rebounding failures is more important than a pattern in successful flow scoring.
 
 Context: ${context || 'אין הקשר נוסף'}
 ${knowledgeContext}
@@ -1904,6 +1931,14 @@ async function generateObservationsForNegativePlays(
 
   await Promise.all(targets.map(async ({ i, play, gemini }) => {
     const prompt = `You are an observant assistant coach analyzing a basketball play that did NOT work for the team. Your job is to surface 2-3 OBSERVATIONS about what was visible during the play. NEVER give advice or suggestions. NEVER say what the player SHOULD have done. Only describe what happened and what was available.
+
+${BRAIN_OBSERVATION_FOCUS}
+
+${BRAIN_DEFENSIVE_PRINCIPLES}
+
+${BRAIN_HIGH_ATTENTION_PLAYS}
+
+This play has been flagged as a negative outcome. Apply Priority 1 analytical depth - identify the originating mistake in the breakdown chain, not just the final visible error.
 
 Play context:
 - Team: ${teamName || 'unknown'}
