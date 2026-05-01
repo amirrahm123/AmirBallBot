@@ -2059,18 +2059,38 @@ async function runVideoPipeline(videoPath: string, context: string, focus: strin
   console.log(`⏱️ Found ${timestamps.length} timestamps`);
   onProgress?.(30, `נמצאו ${timestamps.length} מהלכים`);
 
-  // Pass 2: analyze each clip
+  // Pass 2: analyze each clip with a worker pool. Sequential processing was the
+  // dominant time cost on long videos — a 70-clip game took ~18-20 minutes here
+  // alone and blew past the frontend abort. The CONCURRENCY cap of 5 protects
+  // Gemini's rate limits without the per-call sleep, and each clip still goes
+  // through retryWithBackoff inside analyzeClipAtTimestamp.
   console.log('🎬 [2/4] Analyzing individual clips...');
-  const geminiPlays: GeminiPlay[] = [];
-  for (let i = 0; i < timestamps.length; i++) {
-    const ts = timestamps[i];
-    console.log(`   Clip ${i + 1}/${timestamps.length} at ${ts}`);
-    const clipPct = timestamps.length > 0 ? 30 + Math.round(((i + 1) / timestamps.length) * 60) : 90;
-    onProgress?.(clipPct, `מנתח קליפ ${i + 1} מתוך ${timestamps.length}`);
-    const play = await analyzeClipAtTimestamp(fileUri, mimeType, ts, jerseyColor || '', opponentJerseyColor || '', teamName, roster, context);
-    if (play) geminiPlays.push(play);
-    if (i < timestamps.length - 1) await new Promise(r => setTimeout(r, 3000));
-  }
+  const CLIP_CONCURRENCY = 5;
+  const clipResults: (GeminiPlay | null)[] = new Array(timestamps.length).fill(null);
+  let nextClipIndex = 0;
+  let completedClips = 0;
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const myIndex = nextClipIndex++;
+      if (myIndex >= timestamps.length) return;
+      const ts = timestamps[myIndex];
+      console.log(`   Clip ${myIndex + 1}/${timestamps.length} at ${ts}`);
+      try {
+        const play = await analyzeClipAtTimestamp(fileUri, mimeType, ts, jerseyColor || '', opponentJerseyColor || '', teamName, roster, context);
+        clipResults[myIndex] = play;
+      } catch (e: any) {
+        console.error(`   ❌ Clip ${ts} failed:`, e?.message || e);
+        clipResults[myIndex] = null;
+      }
+      completedClips++;
+      const clipPct = timestamps.length > 0 ? 30 + Math.round((completedClips / timestamps.length) * 60) : 90;
+      onProgress?.(clipPct, `מנתח קליפ ${completedClips} מתוך ${timestamps.length}`);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(CLIP_CONCURRENCY, timestamps.length) }, () => worker()));
+  const geminiPlays: GeminiPlay[] = clipResults.filter((p): p is GeminiPlay => p !== null);
   console.log(`✅ Got ${geminiPlays.length} plays from clips`);
 
   // Step 3: Claude enriches with Hebrew coaching analysis

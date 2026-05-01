@@ -1006,9 +1006,14 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
     document.getElementById('upload-progress').classList.add('hidden');
 
-    // Final safety net: 25 minutes. Polling itself is fast — this rarely triggers.
+    // Final safety net: 35 minutes. Polling itself is fast — this rarely triggers.
+    // With parallelized per-clip analysis, even a 30-min video should complete
+    // well under this; if it fires, something is genuinely wrong.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
+    const timeout = setTimeout(() => {
+      console.error('Analysis aborted after 35-minute frontend timeout');
+      controller.abort();
+    }, 35 * 60 * 1000);
 
     const statusEl = document.getElementById('analysis-status-msg');
     if (statusEl) statusEl.textContent = isVideoFile ? 'מכין ניתוח...' : 'מוריד וידאו...';
@@ -1080,7 +1085,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
       clearInterval(stepInterval);
       document.getElementById('analysis-processing').classList.add('hidden');
       document.getElementById('analysis-empty').classList.remove('hidden');
-      const msg = err.name === 'AbortError' ? 'הניתוח לקח יותר מדי זמן. נסה עם קליפ קצר יותר.' : err.message;
+      const msg = err.name === 'AbortError' ? 'הניתוח לקח יותר מדי זמן (מעל 35 דקות). ייתכן שהשרת תקול. נסה שוב או עם קליפ קצר יותר.' : err.message;
       document.getElementById('analysis-empty').innerHTML = `<p style="font-size:48px;margin-bottom:16px">❌</p><h3 style="color:var(--red);margin-bottom:8px">שגיאה בניתוח</h3><p>${msg}</p>`;
     } finally {
       clearTimeout(timeout);
