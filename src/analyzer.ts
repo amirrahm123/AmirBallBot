@@ -150,10 +150,10 @@ export function ensureVideosDir(): void {
   }
 }
 
-/** Delete videos in VIDEOS_DIR older than 7 days. Safe to call at startup. */
+/** Delete videos in VIDEOS_DIR older than 90 days. Safe to call at startup. */
 export function cleanupOldVideos(): void {
   if (!fs.existsSync(VIDEOS_DIR)) return;
-  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
   const now = Date.now();
   let deleted = 0;
   try {
@@ -161,7 +161,8 @@ export function cleanupOldVideos(): void {
       const filePath = path.join(VIDEOS_DIR, f);
       try {
         const stat = fs.statSync(filePath);
-        if (now - stat.mtimeMs > SEVEN_DAYS) {
+        if (stat.isDirectory()) continue;
+        if (now - stat.mtimeMs > NINETY_DAYS) {
           fs.unlinkSync(filePath);
           console.log(`🗑️ Deleted old video: ${f}`);
           deleted++;
