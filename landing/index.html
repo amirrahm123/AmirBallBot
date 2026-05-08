@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HoopMind — AI Basketball Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Heebo:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --orange:#E8621A;
+  --dark:#0d1117;
+  --dark2:#111827;
+  --white:#f5f0ea;
+  --gray:#8b949e;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--dark);
+  color:var(--white);
+  font-family:'Heebo',sans-serif;
+  font-weight:400;
+  line-height:1.6;
+  overflow-x:hidden;
+  cursor:none;
+}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+
+/* Custom cursor */
+.cursor-dot{
+  position:fixed;width:8px;height:8px;border-radius:50%;
+  background:var(--orange);pointer-events:none;z-index:9999;
+  transform:translate(-50%,-50%);transition:transform .05s;
+}
+.cursor-ring{
+  position:fixed;width:36px;height:36px;border-radius:50%;
+  border:1.5px solid var(--orange);pointer-events:none;z-index:9998;
+  transform:translate(-50%,-50%);transition:transform .15s ease-out, width .2s, height .2s;
+  opacity:.5;
+}
+@media(max-width:768px){
+  .cursor-dot,.cursor-ring{display:none}
+  body{cursor:auto}
+}
+
+/* NAV */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:16px 48px;display:flex;align-items:center;justify-content:space-between;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  background:rgba(13,17,23,.7);border-bottom:1px solid rgba(255,255,255,.05);
+  opacity:0;transform:translateY(-20px);
+}
+.nav-logo{display:flex;align-items:center;gap:10px}
+.nav-logo svg{width:40px;height:33px}
+.nav-logo-text{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:2px}
+.nav-logo-text span:first-child{color:var(--orange)}
+.nav-logo-text span:last-child{color:var(--white)}
+.nav-links{display:flex;align-items:center;gap:32px;font-size:15px;font-weight:300}
+.nav-links a{opacity:.7;transition:opacity .3s}
+.nav-links a:hover{opacity:1}
+.nav-cta{
+  background:var(--orange);color:var(--dark);
+  padding:10px 28px;border-radius:50px;font-weight:700;font-size:14px;
+  border:none;cursor:none;transition:transform .2s, box-shadow .2s;
+}
+.nav-cta:hover{transform:scale(1.05);box-shadow:0 0 24px rgba(232,98,26,.4)}
+@media(max-width:768px){
+  .nav{padding:12px 20px}
+  .nav-links{display:none}
+  .nav-logo-text{font-size:22px}
+}
+
+/* HERO */
+.hero{
+  min-height:100vh;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;text-align:center;
+  position:relative;padding:120px 24px 80px;overflow:hidden;
+}
+.hero-bg-ball{
+  position:absolute;top:-80px;left:-80px;width:500px;height:500px;
+  opacity:.04;animation:floatBall 30s infinite linear;
+}
+@keyframes floatBall{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.hero-court-lines{
+  position:absolute;bottom:0;left:0;right:0;height:200px;
+  opacity:.06;overflow:hidden;
+}
+.hero-court-lines svg{width:100%;height:100%}
+.hero-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(232,98,26,.1);border:1px solid rgba(232,98,26,.25);
+  border-radius:50px;padding:8px 20px;font-size:14px;font-weight:300;
+  margin-bottom:32px;
+}
+.hero-badge-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--orange);
+  animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.hero-line{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(64px,12vw,140px);
+  line-height:.95;letter-spacing:3px;
+}
+.hero-line-white{color:var(--white)}
+.hero-line-orange{color:var(--orange);position:relative;display:inline-block}
+.hero-underline{
+  position:absolute;bottom:-4px;right:0;height:4px;width:0;
+  background:var(--orange);border-radius:2px;
+}
+.hero-sub{
+  max-width:600px;margin:32px auto;font-size:18px;font-weight:300;
+  line-height:1.8;color:var(--gray);
+}
+.hero-btns{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+.btn-primary{
+  background:var(--orange);color:var(--dark);
+  padding:14px 36px;border-radius:50px;font-weight:700;font-size:16px;
+  border:none;cursor:none;transition:transform .2s,box-shadow .2s;
+  font-family:'Heebo',sans-serif;
+}
+.btn-primary:hover{transform:scale(1.05);box-shadow:0 0 30px rgba(232,98,26,.4)}
+.btn-ghost{
+  background:transparent;color:var(--white);
+  padding:14px 36px;border-radius:50px;font-weight:400;font-size:16px;
+  border:1.5px solid rgba(245,240,234,.2);cursor:none;
+  transition:border-color .3s;font-family:'Heebo',sans-serif;
+}
+.btn-ghost:hover{border-color:var(--orange)}
+
+/* STATS TICKER */
+.ticker-wrap{
+  background:var(--dark);border-top:1px solid rgba(232,98,26,.15);
+  border-bottom:1px solid rgba(232,98,26,.15);
+  overflow:hidden;padding:20px 0;
+}
+.ticker-track{
+  display:flex;white-space:nowrap;width:max-content;
+}
+.ticker-text{
+  font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--orange);
+  letter-spacing:2px;padding:0 16px;
+}
+
+/* FEATURES */
+.features{background:var(--dark2);padding:120px 48px}
+.section-tag{
+  font-size:13px;font-weight:700;color:var(--orange);
+  text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;
+}
+.section-headline{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,64px);
+  margin-bottom:60px;line-height:1.1;
+}
+.features-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+  max-width:1200px;margin:0 auto;
+}
+.feature-card{
+  background:rgba(13,17,23,.6);border-radius:16px;padding:40px 32px;
+  border-right:3px solid transparent;position:relative;overflow:hidden;
+  transition:border-color .3s;
+}
+.feature-card:hover{border-color:var(--orange)}
+.feature-card::before{
+  content:attr(data-num);position:absolute;top:12px;left:16px;
+  font-family:'Bebas Neue',sans-serif;font-size:120px;
+  color:rgba(232,98,26,.06);line-height:1;pointer-events:none;
+}
+.feature-card-border{
+  position:absolute;top:0;right:0;width:3px;height:0;
+  background:var(--orange);transition:height .4s ease;border-radius:2px;
+}
+.feature-card:hover .feature-card-border{height:100%}
+.feature-icon{font-size:36px;margin-bottom:20px}
+.feature-title{
+  font-family:'Bebas Neue',sans-serif;font-size:28px;margin-bottom:12px;
+  letter-spacing:1px;
+}
+.feature-desc{font-weight:300;color:var(--gray);line-height:1.8;font-size:15px}
+@media(max-width:768px){
+  .features{padding:80px 20px}
+  .features-grid{grid-template-columns:1fr}
+}
+
+/* HOW IT WORKS */
+.how{background:var(--dark);padding:120px 48px}
+.steps-container{max-width:1100px;margin:0 auto;position:relative}
+.steps-line-wrap{
+  position:absolute;top:40px;right:60px;left:60px;height:2px;
+  overflow:hidden;
+}
+.steps-line{
+  width:100%;height:100%;background:var(--orange);
+  transform-origin:right center;
+}
+.steps-row{
+  display:flex;justify-content:space-between;position:relative;z-index:2;
+  gap:16px;
+}
+.step{text-align:center;flex:1}
+.step-circle{
+  width:80px;height:80px;border-radius:50%;
+  background:var(--dark2);border:2px solid var(--orange);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 20px;font-size:28px;
+}
+.step-title{
+  font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:8px;
+  letter-spacing:1px;
+}
+.step-desc{font-size:14px;font-weight:300;color:var(--gray);max-width:200px;margin:0 auto}
+@media(max-width:768px){
+  .how{padding:80px 20px}
+  .steps-row{flex-direction:column;align-items:center;gap:40px}
+  .steps-line-wrap{display:none}
+}
+
+/* PRICING */
+.pricing{background:var(--dark2);padding:120px 48px}
+.pricing-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+  max-width:1000px;margin:0 auto;align-items:start;
+}
+.price-card{
+  background:rgba(13,17,23,.6);border-radius:16px;padding:36px 28px;
+  border:1px solid rgba(245,240,234,.06);
+  transition:transform .3s,border-color .3s;
+}
+.price-card:hover{transform:translateY(-4px)}
+.price-card.featured{
+  border-color:var(--orange);position:relative;
+  box-shadow:0 0 40px rgba(232,98,26,.12);
+}
+.price-badge{
+  position:absolute;top:-14px;right:50%;transform:translateX(50%);
+  background:var(--orange);color:var(--dark);font-size:12px;font-weight:700;
+  padding:4px 16px;border-radius:50px;white-space:nowrap;
+}
+.price-name{
+  font-family:'Bebas Neue',sans-serif;font-size:30px;margin-bottom:4px;
+  letter-spacing:1px;
+}
+.price-amount{
+  font-family:'Bebas Neue',sans-serif;font-size:48px;color:var(--orange);
+  margin-bottom:4px;
+}
+.price-period{font-size:14px;color:var(--gray);font-weight:300;margin-bottom:24px}
+.price-features{display:flex;flex-direction:column;gap:12px;margin-bottom:28px}
+.price-features li{
+  font-size:14px;font-weight:300;display:flex;align-items:center;gap:8px;
+}
+.price-features li::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--orange);flex-shrink:0}
+.price-btn{
+  width:100%;padding:12px;border-radius:50px;font-weight:700;font-size:14px;
+  cursor:none;transition:transform .2s;font-family:'Heebo',sans-serif;
+  text-align:center;display:block;
+}
+.price-btn-fill{background:var(--orange);color:var(--dark);border:none}
+.price-btn-outline{background:transparent;color:var(--white);border:1.5px solid rgba(245,240,234,.15)}
+.price-btn:hover{transform:scale(1.03)}
+@media(max-width:768px){
+  .pricing{padding:80px 20px}
+  .pricing-grid{grid-template-columns:1fr;max-width:400px}
+}
+
+/* CONTACT */
+.contact{
+  background:var(--dark);padding:120px 48px;text-align:center;
+  position:relative;overflow:hidden;
+}
+.contact::before{
+  content:'';position:absolute;top:50%;left:50%;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(232,98,26,.12) 0%,transparent 70%);
+  transform:translate(-50%,-50%);pointer-events:none;
+}
+.contact-headline{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,6vw,72px);
+  position:relative;z-index:1;margin-bottom:16px;line-height:1.1;
+}
+.contact-headline .char{display:inline-block;opacity:0}
+.contact-sub{
+  font-size:18px;font-weight:300;color:var(--gray);
+  max-width:500px;margin:0 auto 40px;position:relative;z-index:1;line-height:1.8;
+}
+.contact-btns{
+  display:flex;gap:16px;justify-content:center;flex-wrap:wrap;
+  position:relative;z-index:1;
+}
+.btn-wa{
+  background:#25D366;color:#fff;padding:14px 32px;border-radius:50px;
+  font-weight:700;font-size:15px;border:none;cursor:none;
+  display:inline-flex;align-items:center;gap:8px;
+  transition:transform .2s;font-family:'Heebo',sans-serif;
+}
+.btn-wa:hover{transform:scale(1.05)}
+.btn-email{
+  background:transparent;color:var(--white);padding:14px 32px;
+  border-radius:50px;font-weight:400;font-size:15px;
+  border:1.5px solid rgba(245,240,234,.2);cursor:none;
+  transition:border-color .3s;font-family:'Heebo',sans-serif;
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn-email:hover{border-color:var(--orange)}
+
+/* FOOTER */
+.footer{
+  background:var(--dark);border-top:1px solid rgba(245,240,234,.06);
+  padding:32px 48px;text-align:center;
+}
+.footer-inner{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  flex-wrap:wrap;
+}
+.footer-logo{display:flex;align-items:center;gap:8px}
+.footer-logo svg{width:28px;height:23px}
+.footer-logo-text{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px}
+.footer-logo-text span:first-child{color:var(--orange)}
+.footer-text{font-size:13px;color:var(--gray);font-weight:300}
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div class="cursor-dot"></div>
+<div class="cursor-ring"></div>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <a href="#" class="nav-logo">
+    <svg viewBox="0 0 240 200" xmlns="http://www.w3.org/2000/svg">
+      <defs><clipPath id="eyeclip-nav"><path d="M20 100 Q80 44 120 40 Q160 44 220 100 Q160 156 120 160 Q80 156 20 100Z"/></clipPath></defs>
+      <g clip-path="url(#eyeclip-nav)">
+        <path d="M20 100 Q80 44 120 40 Q160 44 220 100 Q160 156 120 160 Q80 156 20 100Z" fill="#f0e6d3"/>
+        <circle cx="120" cy="100" r="42" fill="#E8621A"/>
+        <path d="M78 100 Q120 70 162 100" stroke="#0d1117" stroke-width="2.5" fill="none"/>
+        <path d="M78 100 Q120 130 162 100" stroke="#0d1117" stroke-width="2.5" fill="none"/>
+        <line x1="120" y1="58" x2="120" y2="142" stroke="#0d1117" stroke-width="2.5"/>
+        <circle cx="120" cy="100" r="16" fill="#0d1117"/>
+        <circle cx="114" cy="93" r="4" fill="#fff"/>
+      </g>
+      <path d="M20 100 Q80 44 120 40 Q160 44 220 100" stroke="#0d1117" stroke-width="6" fill="none"/>
+      <path d="M20 100 Q80 156 120 160 Q160 156 220 100" stroke="#0d1117" stroke-width="4" fill="none"/>
+      <path d="M20 100 Q80 44 120 40 Q160 44 220 100" stroke="#E8621A" stroke-width="2.5" fill="none"/>
+      <path d="M20 100 Q80 156 120 160 Q160 156 220 100" stroke="#E8621A" stroke-width="2" fill="none"/>
+      <circle cx="20" cy="100" r="5" fill="#E8621A"/><circle cx="220" cy="100" r="5" fill="#E8621A"/>
+    </svg>
+    <span class="nav-logo-text"><span>HOOP</span><span>MIND</span></span>
+  </a>
+  <div class="nav-links">
+    <a href="#features">יכולות</a>
+    <a href="#how">איך זה עובד</a>
+    <a href="#pricing">תמחור</a>
+    <a href="#contact">צרו קשר</a>
+    <button class="nav-cta" onclick="location.href='#contact'">התחל עכשיו</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <!-- Floating basketball bg -->
+  <svg class="hero-bg-ball" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="100" cy="100" r="90" stroke="#E8621A" stroke-width="3" fill="none"/>
+    <path d="M10 100 Q100 60 190 100" stroke="#E8621A" stroke-width="2.5" fill="none"/>
+    <path d="M10 100 Q100 140 190 100" stroke="#E8621A" stroke-width="2.5" fill="none"/>
+    <line x1="100" y1="10" x2="100" y2="190" stroke="#E8621A" stroke-width="2.5"/>
+  </svg>
+  <!-- Court lines bg -->
+  <div class="hero-court-lines">
+    <svg viewBox="0 0 1200 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <rect x="0" y="0" width="1200" height="200" stroke="#E8621A" stroke-width="2" fill="none"/>
+      <circle cx="600" cy="0" r="120" stroke="#E8621A" stroke-width="2" fill="none"/>
+      <line x1="600" y1="0" x2="600" y2="200" stroke="#E8621A" stroke-width="2"/>
+      <rect x="0" y="0" width="250" height="160" stroke="#E8621A" stroke-width="2" fill="none"/>
+      <rect x="950" y="0" width="250" height="160" stroke="#E8621A" stroke-width="2" fill="none"/>
+      <circle cx="125" cy="0" r="60" stroke="#E8621A" stroke-width="1.5" fill="none"/>
+      <circle cx="1075" cy="0" r="60" stroke="#E8621A" stroke-width="1.5" fill="none"/>
+    </svg>
+  </div>
+
+  <div class="hero-badge" data-hero>
+    <span class="hero-badge-dot"></span>
+    AI לכדורסל ישראלי
+  </div>
+  <div class="hero-line hero-line-white" data-hero>ניתוח משחק</div>
+  <div class="hero-line" data-hero>
+    <span class="hero-line-orange">ברמת NBA<span class="hero-underline" id="heroUnderline"></span></span>
+  </div>
+  <p class="hero-sub" data-hero>
+    HoopMind מנתח כל משחק אוטומטית — מהלכים, תובנות, טקטיקות — בעברית, בתוך דקות. מותאם לליגת העל ולליגה הלאומית.
+  </p>
+  <div class="hero-btns" data-hero>
+    <button class="btn-primary" onclick="location.href='#contact'">התחל ניסיון חינם</button>
+    <button class="btn-ghost" onclick="location.href='#how'">איך זה עובד &#8592;</button>
+  </div>
+</section>
+
+<!-- STATS TICKER -->
+<div class="ticker-wrap">
+  <div class="ticker-track" id="ticker">
+    <span class="ticker-text">90% דיוק &nbsp;&middot;&nbsp; 30 מהלכים למשחק &nbsp;&middot;&nbsp; 5 דקות לניתוח &nbsp;&middot;&nbsp; 3 שעות חסכון &nbsp;&middot;&nbsp; AI ישראלי &nbsp;&middot;&nbsp; עברית מלאה &nbsp;&middot;&nbsp;</span>
+    <span class="ticker-text">90% דיוק &nbsp;&middot;&nbsp; 30 מהלכים למשחק &nbsp;&middot;&nbsp; 5 דקות לניתוח &nbsp;&middot;&nbsp; 3 שעות חסכון &nbsp;&middot;&nbsp; AI ישראלי &nbsp;&middot;&nbsp; עברית מלאה &nbsp;&middot;&nbsp;</span>
+    <span class="ticker-text">90% דיוק &nbsp;&middot;&nbsp; 30 מהלכים למשחק &nbsp;&middot;&nbsp; 5 דקות לניתוח &nbsp;&middot;&nbsp; 3 שעות חסכון &nbsp;&middot;&nbsp; AI ישראלי &nbsp;&middot;&nbsp; עברית מלאה &nbsp;&middot;&nbsp;</span>
+    <span class="ticker-text">90% דיוק &nbsp;&middot;&nbsp; 30 מהלכים למשחק &nbsp;&middot;&nbsp; 5 דקות לניתוח &nbsp;&middot;&nbsp; 3 שעות חסכון &nbsp;&middot;&nbsp; AI ישראלי &nbsp;&middot;&nbsp; עברית מלאה &nbsp;&middot;&nbsp;</span>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div style="max-width:1200px;margin:0 auto">
+    <div class="section-tag">יכולות המערכת</div>
+    <h2 class="section-headline">מה HoopMind עושה בשבילך</h2>
+    <div class="features-grid">
+      <div class="feature-card" data-num="01" data-feature>
+        <div class="feature-card-border"></div>
+        <div class="feature-icon">🎬</div>
+        <div class="feature-title">ניתוח וידאו אוטומטי</div>
+        <div class="feature-desc">מעלים קישור מ-Google Drive — המערכת מורידה, מנתחת ומחזירה הערות מפורטות לכל מהלך משמעותי.</div>
+      </div>
+      <div class="feature-card" data-num="02" data-feature>
+        <div class="feature-card-border"></div>
+        <div class="feature-icon">🧠</div>
+        <div class="feature-title">זיהוי מהלכים חכם</div>
+        <div class="feature-desc">Pick &amp; Roll, חתך, מעבר מהיר, אלי-אופ, פייד-אווי. לא רק "שחקן ירה" — אלא למה זה הצליח.</div>
+      </div>
+      <div class="feature-card" data-num="03" data-feature>
+        <div class="feature-card-border"></div>
+        <div class="feature-icon">📋</div>
+        <div class="feature-title">תובנות מאמן בעברית</div>
+        <div class="feature-desc">תובנות ספציפיות שמאמן יכול להשתמש בהן ישירות באימון הבא. מה עבד ומה צריך לתקן.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div style="max-width:1100px;margin:0 auto">
+    <div class="section-tag">איך זה עובד</div>
+    <h2 class="section-headline">ארבעה צעדים פשוטים</h2>
+    <div class="steps-container">
+      <div class="steps-line-wrap"><div class="steps-line" id="stepsLine"></div></div>
+      <div class="steps-row">
+        <div class="step" data-step>
+          <div class="step-circle">📤</div>
+          <div class="step-title">מעלים סרטון</div>
+          <div class="step-desc">קישור Google Drive</div>
+        </div>
+        <div class="step" data-step>
+          <div class="step-circle">🔮</div>
+          <div class="step-title">Gemini מנתח</div>
+          <div class="step-desc">זיהוי מהלכים בוידאו</div>
+        </div>
+        <div class="step" data-step>
+          <div class="step-circle">🤖</div>
+          <div class="step-title">Claude מעשיר</div>
+          <div class="step-desc">הערות בעברית + טקטיקה</div>
+        </div>
+        <div class="step" data-step>
+          <div class="step-circle">📊</div>
+          <div class="step-title">מקבלים דוח</div>
+          <div class="step-desc">מהלכים, תובנות, גרף זריקות</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div style="max-width:1000px;margin:0 auto">
+    <div class="section-tag" style="text-align:center">תמחור</div>
+    <h2 class="section-headline" style="text-align:center">חבילה לכל קבוצה</h2>
+    <div class="pricing-grid">
+      <div class="price-card" data-price>
+        <div class="price-name">בייסיק</div>
+        <div class="price-amount">&#8362;299</div>
+        <div class="price-period">לחודש</div>
+        <ul class="price-features">
+          <li>עד 10 משחקים בחודש</li>
+          <li>ניתוח עברית מלא</li>
+          <li>רוסטר שחקנים</li>
+          <li>תמיכה בוואטסאפ</li>
+        </ul>
+        <button class="price-btn price-btn-outline" onclick="location.href='#contact'">התחל עכשיו</button>
+      </div>
+      <div class="price-card featured" data-price>
+        <div class="price-badge">הכי פופולרי</div>
+        <div class="price-name">פרו</div>
+        <div class="price-amount">&#8362;499</div>
+        <div class="price-period">לחודש</div>
+        <ul class="price-features">
+          <li>ניתוחים ללא הגבלה</li>
+          <li>כל יכולות הבייסיק</li>
+          <li>תובנות טקטיות מעמיקות</li>
+          <li>גרף זריקות חי</li>
+          <li>עדיפות בתמיכה</li>
+        </ul>
+        <button class="price-btn price-btn-fill" onclick="location.href='#contact'">התחל עכשיו</button>
+      </div>
+      <div class="price-card" data-price>
+        <div class="price-name">עונה</div>
+        <div class="price-amount">&#8362;1,990</div>
+        <div class="price-period">לעונה</div>
+        <ul class="price-features">
+          <li>כל יכולות הפרו</li>
+          <li>עונה שלמה ללא הגבלה</li>
+          <li>ניתוח מתחרים</li>
+          <li>חיסכון של 33%</li>
+        </ul>
+        <button class="price-btn price-btn-outline" onclick="location.href='#contact'">התחל עכשיו</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section class="contact" id="contact">
+  <h2 class="contact-headline" id="contactHeadline">מוכן לשדרג את האימון שלך?</h2>
+  <p class="contact-sub">צרו קשר ונתחיל עם ניסיון חינם. 3 ניתוחים ראשונים — בלי עלות.</p>
+  <div class="contact-btns">
+    <a href="https://wa.me/972501234567?text=היי%2C+אני+מעוניין+בHoopMind" class="btn-wa" target="_blank">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      שלח הודעה בוואטסאפ
+    </a>
+    <a href="mailto:amirrahm135@gmail.com" class="btn-email">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
+      amirrahm135@gmail.com
+    </a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <svg viewBox="0 0 240 200" xmlns="http://www.w3.org/2000/svg">
+        <defs><clipPath id="eyeclip-foot"><path d="M20 100 Q80 44 120 40 Q160 44 220 100 Q160 156 120 160 Q80 156 20 100Z"/></clipPath></defs>
+        <g clip-path="url(#eyeclip-foot)">
+          <path d="M20 100 Q80 44 120 40 Q160 44 220 100 Q160 156 120 160 Q80 156 20 100Z" fill="#f0e6d3"/>
+          <circle cx="120" cy="100" r="42" fill="#E8621A"/>
+          <path d="M78 100 Q120 70 162 100" stroke="#0d1117" stroke-width="2.5" fill="none"/>
+          <path d="M78 100 Q120 130 162 100" stroke="#0d1117" stroke-width="2.5" fill="none"/>
+          <line x1="120" y1="58" x2="120" y2="142" stroke="#0d1117" stroke-width="2.5"/>
+          <circle cx="120" cy="100" r="16" fill="#0d1117"/>
+          <circle cx="114" cy="93" r="4" fill="#fff"/>
+        </g>
+        <path d="M20 100 Q80 44 120 40 Q160 44 220 100" stroke="#0d1117" stroke-width="6" fill="none"/>
+        <path d="M20 100 Q80 156 120 160 Q160 156 220 100" stroke="#0d1117" stroke-width="4" fill="none"/>
+        <path d="M20 100 Q80 44 120 40 Q160 44 220 100" stroke="#E8621A" stroke-width="2.5" fill="none"/>
+        <path d="M20 100 Q80 156 120 160 Q160 156 220 100" stroke="#E8621A" stroke-width="2" fill="none"/>
+        <circle cx="20" cy="100" r="5" fill="#E8621A"/><circle cx="220" cy="100" r="5" fill="#E8621A"/>
+      </svg>
+      <span class="footer-logo-text"><span>HOOP</span><span>MIND</span></span>
+    </div>
+    <span class="footer-text">&copy; 2026 כל הזכויות שמורות HoopMind</span>
+  </div>
+</footer>
+
+<!-- GSAP -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script>
+gsap.registerPlugin(ScrollTrigger);
+
+// --- Custom cursor ---
+const dot = document.querySelector('.cursor-dot');
+const ring = document.querySelector('.cursor-ring');
+if (dot && ring && window.innerWidth > 768) {
+  window.addEventListener('mousemove', e => {
+    dot.style.left = e.clientX + 'px';
+    dot.style.top = e.clientY + 'px';
+    gsap.to(ring, { left: e.clientX, top: e.clientY, duration: 0.15, ease: 'power2.out' });
+  });
+}
+
+// --- Nav fade in on scroll ---
+gsap.to('.nav', {
+  opacity: 1, y: 0, duration: 0.6, ease: 'power2.out',
+  scrollTrigger: { trigger: '.hero', start: 'top 95%', toggleActions: 'play none none none' }
+});
+// Also show nav immediately if page loaded scrolled
+if (window.scrollY > 10) gsap.set('.nav', { opacity: 1, y: 0 });
+
+// --- Hero stagger ---
+gsap.from('[data-hero]', {
+  y: 60, opacity: 0, duration: 0.8, stagger: 0.12, ease: 'power3.out', delay: 0.3
+});
+
+// Hero underline draw
+gsap.to('#heroUnderline', {
+  width: '100%', duration: 0.8, ease: 'power2.inOut', delay: 1.1
+});
+
+// --- Stats ticker ---
+gsap.to('#ticker', {
+  x: '-50%', duration: 20, repeat: -1, ease: 'none'
+});
+
+// --- Feature cards ---
+gsap.from('[data-feature]', {
+  y: 40, opacity: 0, duration: 0.7, stagger: 0.15, ease: 'power2.out',
+  scrollTrigger: { trigger: '.features-grid', start: 'top 80%' }
+});
+
+// --- Steps line draw ---
+gsap.from('#stepsLine', {
+  scaleX: 0, duration: 1, ease: 'power2.inOut',
+  scrollTrigger: { trigger: '.steps-container', start: 'top 80%' }
+});
+
+// --- Step circles ---
+gsap.from('[data-step] .step-circle', {
+  scale: 0, duration: 0.5, stagger: 0.2, ease: 'back.out(1.7)',
+  scrollTrigger: { trigger: '.steps-container', start: 'top 75%' }
+});
+
+// --- Pricing cards ---
+gsap.from('[data-price]', {
+  y: 50, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out',
+  scrollTrigger: { trigger: '.pricing-grid', start: 'top 80%' }
+});
+
+// --- Contact headline split chars ---
+(function() {
+  const el = document.getElementById('contactHeadline');
+  const text = el.textContent;
+  el.textContent = '';
+  for (let i = 0; i < text.length; i++) {
+    const span = document.createElement('span');
+    span.className = 'char';
+    span.textContent = text[i] === ' ' ? '\u00A0' : text[i];
+    el.appendChild(span);
+  }
+  gsap.to('#contactHeadline .char', {
+    opacity: 1, duration: 0.4, stagger: 0.03, ease: 'power1.out',
+    scrollTrigger: { trigger: '.contact', start: 'top 80%' }
+  });
+})();
+</script>
+</body>
+</html>
