@@ -526,6 +526,47 @@ async function detectPlayTimestamps(
   const { GoogleGenAI } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
+  // Determine timestamp cap from video duration. Best-effort: ask Gemini for the
+  // file metadata; on any failure, fall back to a 10-minute assumption.
+  let videoDurationSeconds = 600;
+  try {
+    const nameMatch = fileUri.match(/files\/[^/]+$/);
+    if (nameMatch) {
+      const fileResponse = await ai.files.get({ name: nameMatch[0] });
+      const dur = (fileResponse as any)?.videoMetadata?.videoDuration;
+      if (typeof dur === 'string') {
+        const parsed = parseFloat(dur.replace('s', ''));
+        if (Number.isFinite(parsed) && parsed > 0) videoDurationSeconds = parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not fetch video duration from Gemini, using 10-min fallback:', err);
+  }
+  const videoMinutes = videoDurationSeconds / 60;
+
+  let timestampCap: number;
+  let tierLabel: string;
+  if (videoMinutes <= 15) {
+    timestampCap = 15;
+    tierLabel = 'short clip / single quarter';
+  } else if (videoMinutes <= 30) {
+    timestampCap = 30;
+    tierLabel = 'half-game / two quarters';
+  } else if (videoMinutes <= 50) {
+    timestampCap = 45;
+    tierLabel = 'three quarters / short full game';
+  } else {
+    timestampCap = 65;
+    tierLabel = 'full game';
+  }
+  console.log(`📐 Video length: ${videoMinutes.toFixed(1)} min → tier: ${tierLabel} → cap: ${timestampCap} plays`);
+
+  const distributionGuidance = timestampCap >= 65
+    ? 'For a full game, distribute attention as: ~15 plays per quarter for Q1-Q3, then ~20 plays in Q4 (where execution under pressure deserves more analysis).'
+    : timestampCap >= 30
+      ? 'Distribute attention evenly across the video duration.'
+      : 'This is a short clip. Focus on the most meaningful plays; do not pad to reach the limit.';
+
   const prompt = `You are watching a basketball game video.
 Your ONLY job is to find timestamps where important plays happened.
 
@@ -543,14 +584,14 @@ INCLUSION PHILOSOPHY: When in doubt, INCLUDE. A false-positive timestamp is harm
 
 ${BRAIN_HIGH_ATTENTION_PLAYS}
 
-Use this priority framework when triaging timestamps. Priority 1 plays (possession-critical failures) should NEVER be missed. If the 25-timestamp limit is approaching, drop low-attention made baskets in flow before dropping any Priority 1 play.
+Use this priority framework when triaging timestamps. Priority 1 plays (possession-critical failures) should NEVER be missed. If the ${timestampCap}-timestamp limit is approaching, drop low-attention made baskets in flow before dropping any Priority 1 play.
 
 Return ONLY a valid JSON array of timestamp strings in MM:SS format.
 Example: ["02:34", "04:11", "07:22", "13:05"]
 
 Rules:
 - Return the array only. No text before or after. No markdown.
-- Maximum 25 timestamps.
+- Maximum ${timestampCap} timestamps. ${distributionGuidance}
 - If two events are within 15 seconds of each other, keep only one.
 - The analyzing team wears ${jerseyColor}. Opponent wears ${opponentJerseyColor}.
 - IMPORTANT: Only include timestamps where the shot clock is visible on screen. If the shot clock is not visible (celebration, timeout, close-up) — skip that moment.
@@ -589,13 +630,15 @@ DO NOT skip a timestamp just because the play "looks similar" to a previous one 
 When uncertain, INCLUDE the timestamp. Missing a real play is worse than emitting one extra timestamp that turns out to be a replay (the per-clip analyzer has its own replay check downstream).`;
 
   try {
-    const rawResponse = await retryWithBackoff(async () => {
+    const result = await retryWithBackoff(async () => {
       const res = await ai.models.generateContent({
         model: GEMINI_MODEL,
         config: {
           temperature: 0.1,
           maxOutputTokens: 2048,
-        },
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
+        } as any,
         contents: [{
           role: 'user',
           parts: [
@@ -611,9 +654,17 @@ When uncertain, INCLUDE the timestamp. Missing a real play is worse than emittin
         (emptyErr as any).status = 503;
         throw emptyErr;
       }
-      return text;
+      return res;
     }, 'timestamp detection');
 
+    const finishReason = (result as any)?.candidates?.[0]?.finishReason;
+    const usage = (result as any)?.usageMetadata;
+    console.log(`🔍 Timestamp detection: finishReason=${finishReason}, prompt=${usage?.promptTokenCount}, output=${usage?.candidatesTokenCount}, thoughts=${usage?.thoughtsTokenCount || 0}`);
+    if (finishReason === 'MAX_TOKENS') {
+      console.warn('⚠️ Timestamp detection hit MAX_TOKENS');
+    }
+
+    const rawResponse = typeof result.text === 'string' ? result.text : '';
     const rawText = rawResponse
       .replace(/```json/g, '')
       .replace(/```/g, '')
@@ -626,11 +677,19 @@ When uncertain, INCLUDE the timestamp. Missing a real play is worse than emittin
       const fallbackMatches = rawText.match(/\d{2}:\d{2}/g);
       if (fallbackMatches && fallbackMatches.length > 0) {
         console.log(`⚠️ Using fallback extraction: ${fallbackMatches.length} timestamps`);
-        return fallbackMatches.slice(0, 25);
+        return fallbackMatches.slice(0, timestampCap);
       }
       return [];
     }
-    const timestamps: string[] = JSON.parse(jsonMatch[0]);
+    let timestamps: string[];
+    try {
+      timestamps = JSON.parse(jsonMatch[0]);
+    } catch (parseErr: any) {
+      console.error(`❌ JSON parse error: ${parseErr?.message || parseErr}`);
+      console.error(`   First 500 chars: ${jsonMatch[0].substring(0, 500)}`);
+      console.error(`   Last 200 chars: ${jsonMatch[0].substring(Math.max(0, jsonMatch[0].length - 200))}`);
+      throw parseErr;
+    }
     console.log(`🎯 Detected ${timestamps.length} play timestamps:`, timestamps);
     return timestamps;
   } catch (err) {
@@ -995,8 +1054,10 @@ async function analyzeClipAtTimestamp(
         model: GEMINI_MODEL,
         config: {
           temperature: 0.1,
-          maxOutputTokens: 4096,
-        },
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 1024 },
+        } as any,
         contents: [{
           role: 'user',
           parts: [
@@ -1020,16 +1081,31 @@ async function analyzeClipAtTimestamp(
       return res;
     }, `clip at ${timestampStr}`);
 
+    const clipFinishReason = (result as any)?.candidates?.[0]?.finishReason;
+    const clipUsage = (result as any)?.usageMetadata;
+    console.log(`🔍 Clip ${timestampStr}: finishReason=${clipFinishReason}, output=${clipUsage?.candidatesTokenCount}, thoughts=${clipUsage?.thoughtsTokenCount || 0}`);
+    if (clipFinishReason === 'MAX_TOKENS') {
+      console.warn(`⚠️ Clip ${timestampStr} hit MAX_TOKENS`);
+    }
+
     const rawText = (result.text || '')
       .replace(/```json/g, '')
       .replace(/```/g, '')
       .trim();
     const jsonMatch = rawText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.log(`   ⚠️ Clip ${timestampStr}: no JSON found`);
+      console.log(`   ⚠️ Clip ${timestampStr}: no JSON found. raw (first 500): ${rawText.substring(0, 500)}`);
       return null;
     }
-    const parsed: any[] = JSON.parse(jsonMatch[0]);
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseErr: any) {
+      console.error(`❌ Clip ${timestampStr} JSON parse error: ${parseErr?.message || parseErr}`);
+      console.error(`   First 500 chars: ${jsonMatch[0].substring(0, 500)}`);
+      console.error(`   Last 200 chars: ${jsonMatch[0].substring(Math.max(0, jsonMatch[0].length - 200))}`);
+      throw parseErr;
+    }
     const first = parsed[0];
     if (first?.skip === true) {
       console.log(`   ⏭️ Skipped clip at ${timestampStr} — ${first.reason || 'replay'} detected`);
