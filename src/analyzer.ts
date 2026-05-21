@@ -527,9 +527,10 @@ async function detectPlayTimestamps(
   const { GoogleGenAI } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-  // Determine timestamp cap from video duration. Best-effort: ask Gemini for the
-  // file metadata; on any failure, fall back to a 10-minute assumption.
-  let videoDurationSeconds = 600;
+  // Determine timestamp cap from video duration. If Gemini doesn't return a
+  // valid duration, fail loudly — a silent fallback would silently cap a
+  // 90-min game at the 15-play tier and nobody would notice.
+  let videoDurationSeconds = 0;
   try {
     const nameMatch = fileUri.match(/files\/[^/]+$/);
     if (nameMatch) {
@@ -541,7 +542,10 @@ async function detectPlayTimestamps(
       }
     }
   } catch (err) {
-    console.warn('⚠️ Could not fetch video duration from Gemini, using 10-min fallback:', err);
+    console.error('❌ Could not fetch video duration from Gemini:', err);
+  }
+  if (!videoDurationSeconds || videoDurationSeconds <= 0) {
+    throw new Error(`Could not determine video duration from Gemini Files API metadata. fileUri=${fileUri}`);
   }
   const videoMinutes = videoDurationSeconds / 60;
 
