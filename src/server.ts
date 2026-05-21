@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { connectDB } from './database';
+import { connectDB, Job } from './database';
 import { ensureVideosDir, cleanupOldVideos } from './analyzer';
 import analyzeRouter, { jobRouter } from './routes/analyze';
 import chatRouter from './routes/chat';
@@ -49,6 +49,20 @@ console.log('✅ Routes registered');
 // Start server
 async function start() {
   await connectDB();
+
+  // Recover from any jobs left in 'processing' from a previous deploy/crash.
+  // They can't resume — the in-memory state is gone — so fail them with a
+  // clear message and let the user retry.
+  const staleResult = await Job.updateMany(
+    { status: 'processing' },
+    {
+      status: 'failed',
+      error: 'השרת התחדשה במהלך הניתוח. אנא נסה שוב.',
+      failedAt: new Date(),
+    },
+  );
+  console.log(`[startup] Recovered ${staleResult.modifiedCount} stale processing jobs`);
+
   ensureVideosDir();
   cleanupOldVideos();
   app.listen(PORT, () => {
