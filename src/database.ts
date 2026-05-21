@@ -136,6 +136,7 @@ const VerificationSchema = new mongoose.Schema({
   geminiAccuracy: Number,
   coachAccuracy: Number,
   totalPlays: Number,
+  scoredPlays: { type: Number },
   wrongPlays: Array,
   createdAt: { type: Date, default: Date.now },
 });

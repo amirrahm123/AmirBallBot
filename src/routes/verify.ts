@@ -9,11 +9,12 @@ const router = Router();
 // the unused POST /:analysisId handler.
 router.post('/save/:analysisId', async (req: Request, res: Response) => {
   try {
-    const { coachAccuracy, totalPlays, wrongPlays } = req.body;
+    const { coachAccuracy, totalPlays, scoredPlays, wrongPlays } = req.body;
     const verification = await Verification.create({
       analysisId: req.params.analysisId,
       coachAccuracy,
       totalPlays,
+      scoredPlays,
       wrongPlays: wrongPlays || [],
     });
     console.log(`💾 Verification saved: ${verification._id}`);
