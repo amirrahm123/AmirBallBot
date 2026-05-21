@@ -16,14 +16,23 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// CORS — allow Vercel frontend and local dev
+// CORS — allow Vercel frontend in production and any localhost port
+// (or file://) during local development. Function form lets us match
+// arbitrary localhost ports without listing every dev-server choice.
+const PROD_ORIGINS = [
+  'https://amirballbot.vercel.app',
+  'https://amirballbot-amirrahm.vercel.app',
+];
 app.use(cors({
-  origin: [
-    'https://amirballbot.vercel.app',
-    'https://amirballbot-amirrahm.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:5500',
-  ],
+  origin: (origin, callback) => {
+    // No Origin = same-origin, curl/Postman, or file:// in some browsers.
+    if (!origin || origin === 'null') return callback(null, true);
+    if (PROD_ORIGINS.includes(origin)) return callback(null, true);
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
 }));

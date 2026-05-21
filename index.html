@@ -788,8 +788,17 @@ textarea{resize:vertical;min-height:80px}
 </div>
 
 <script>
-// Railway backend URL — all API calls go here
-const API = 'https://amirballbot-production.up.railway.app';
+// Backend URL — auto-detects local dev vs production.
+// When index.html is opened on localhost / 127.0.0.1 / file:// it talks
+// to the local backend started by `npm run dev` (port 10000). Anywhere
+// else (Vercel preview, prod, etc.) hits Railway.
+const API_BASE = (() => {
+  const host = window.location.hostname;
+  if (!host || host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:10000';
+  }
+  return 'https://amirballbot-production.up.railway.app';
+})();
 let currentAnalysis = null;
 let currentJobId = null;
 let selectedPlayerId = null;
@@ -861,7 +870,7 @@ async function uploadToGemini(file) {
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', API + '/api/analyze/upload-video');
+    xhr.open('POST', API_BASE + '/api/analyze/upload-video');
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
@@ -1020,7 +1029,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
     try {
       // Step 1: create job
-      const createRes = await fetch(API + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
+      const createRes = await fetch(API_BASE + '/api/analyze', { method: 'POST', body: formData, signal: controller.signal });
       const createData = await createRes.json();
       if (!createRes.ok || createData.error) {
         const errMsg = createData.error || `HTTP ${createRes.status}`;
@@ -1050,7 +1059,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 
         let job;
         try {
-          const pollRes = await fetch(`${API}/api/job/${jobId}`, { signal: controller.signal });
+          const pollRes = await fetch(`${API_BASE}/api/job/${jobId}`, { signal: controller.signal });
           if (!pollRes.ok) throw new Error(`HTTP ${pollRes.status}`);
           job = await pollRes.json();
           consecutiveFails = 0;
@@ -1271,7 +1280,7 @@ function renderAnalysis(data) {
 // === Coach Corrections ===
 async function markCorrect(jobId, playIndex) {
   try {
-    await fetch(API + '/api/analyze/correction', {
+    await fetch(API_BASE + '/api/analyze/correction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, playIndex, correct: true })
@@ -1292,7 +1301,7 @@ async function saveCorrection(jobId, playIndex) {
   const input = document.getElementById('correction-text-' + playIndex);
   if (!input || !input.value.trim()) return;
   try {
-    await fetch(API + '/api/analyze/correction', {
+    await fetch(API_BASE + '/api/analyze/correction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, playIndex, correct: false, correction: input.value.trim() })
@@ -1324,7 +1333,7 @@ async function sendChat() {
   chatMessages.appendChild(assistantMsg);
 
   try {
-    const res = await fetch(API + '/api/chat', {
+    const res = await fetch(API_BASE + '/api/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ message: msg, context: currentAnalysis })
@@ -1362,7 +1371,7 @@ async function sendChat() {
 // === Roster ===
 async function loadRoster() {
   try {
-    const res = await fetch(API + '/api/players');
+    const res = await fetch(API_BASE + '/api/players');
     const players = await res.json();
     const tbody = document.getElementById('roster-body');
     tbody.innerHTML = players.map(p => `
@@ -1378,7 +1387,7 @@ async function loadRoster() {
 async function deletePlayer(id) {
   if (!confirm('למחוק את השחקן?')) return;
   try {
-    await fetch(API + '/api/players/' + id, { method: 'DELETE' });
+    await fetch(API_BASE + '/api/players/' + id, { method: 'DELETE' });
     loadRoster();
   } catch (e) { console.error('deletePlayer error:', e); }
 }
@@ -1386,7 +1395,7 @@ async function deletePlayer(id) {
 document.getElementById('roster-clear-btn').addEventListener('click', async () => {
   if (!confirm('למחוק את כל השחקנים?')) return;
   try {
-    await fetch(API + '/api/players/all', { method: 'DELETE' });
+    await fetch(API_BASE + '/api/players/all', { method: 'DELETE' });
     loadRoster();
   } catch (e) { console.error('clearRoster error:', e); }
 });
@@ -1402,7 +1411,7 @@ async function loadPlayer(id) {
   document.getElementById('screen-title').textContent = 'פרופיל שחקן';
 
   try {
-    const res = await fetch(API + '/api/players/' + id);
+    const res = await fetch(API_BASE + '/api/players/' + id);
     const p = await res.json();
     document.getElementById('player-avatar').textContent = p.jersey || '?';
     document.getElementById('player-name').textContent = p.name || '';
@@ -1446,7 +1455,7 @@ document.querySelectorAll('.profile-tab').forEach(tab => {
 document.getElementById('save-notion')?.addEventListener('click', async () => {
   if (!currentAnalysis) return alert('אין ניתוח לשמירה');
   try {
-    const res = await fetch(API + '/api/save-notion', {
+    const res = await fetch(API_BASE + '/api/save-notion', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ analysis: currentAnalysis })
@@ -1465,7 +1474,7 @@ document.getElementById('generate-practice')?.addEventListener('click', async ()
   drillsDiv.innerHTML = '<div class="processing"><div class="spinner"></div><p>מכין תוכנית אימון...</p></div>';
 
   try {
-    const res = await fetch(API + '/api/practice-plan', {
+    const res = await fetch(API_BASE + '/api/practice-plan', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ analysis: currentAnalysis })
@@ -1513,7 +1522,7 @@ document.getElementById('add-player-save').addEventListener('click', async () =>
   const jersey = document.getElementById('add-player-number').value.trim();
   if (!name) return;
   try {
-    await fetch(API + '/api/players', {
+    await fetch(API_BASE + '/api/players', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ name, jersey: jersey || '0', position: '' })
@@ -1537,7 +1546,7 @@ document.getElementById('roster-parse-btn').addEventListener('click', async () =
   preview.classList.add('hidden');
 
   try {
-    const res = await fetch(API + '/api/players/parse-roster', {
+    const res = await fetch(API_BASE + '/api/players/parse-roster', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ text })
@@ -1580,7 +1589,7 @@ document.getElementById('roster-confirm-btn').addEventListener('click', async ()
 
   try {
     for (const p of players) {
-      await fetch(API + '/api/players', {
+      await fetch(API_BASE + '/api/players', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(p)
@@ -1623,7 +1632,7 @@ function focusLabel(focus) {
 
 async function loadSavedAnalyses() {
   try {
-    const res = await fetch(API + '/api/analyses');
+    const res = await fetch(API_BASE + '/api/analyses');
     const data = await res.json();
     savedAnalysesCache = Array.isArray(data) ? data : (data.analyses || []);
   } catch (e) {
@@ -1710,7 +1719,7 @@ function viewSavedAnalysis(id) { return loadSavedAnalysis(id); }
 
 async function loadSavedAnalysis(id) {
   try {
-    const res = await fetch(API + '/api/analyses/' + id);
+    const res = await fetch(API_BASE + '/api/analyses/' + id);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     currentJobId = null;
@@ -1728,7 +1737,7 @@ async function loadSavedAnalysis(id) {
 async function deleteSavedAnalysis(id) {
   if (!confirm('למחוק את הניתוח? פעולה זו לא ניתנת לביטול.')) return;
   try {
-    const res = await fetch(API + '/api/analyses/' + id, { method: 'DELETE' });
+    const res = await fetch(API_BASE + '/api/analyses/' + id, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete');
     savedAnalysesCache = savedAnalysesCache.filter(a => a._id !== id);
     renderSavedAnalyses();
@@ -1880,7 +1889,7 @@ async function saveVerification() {
   const coachAccuracy = Math.round((correct / scoredPlays) * 100);
 
   try {
-    const res = await fetch(API + '/api/verify/save/' + analysisId, {
+    const res = await fetch(API_BASE + '/api/verify/save/' + analysisId, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2542,7 +2551,7 @@ function openCurrentInEditor() {
 }
 
 function openSavedInEditor(id) {
-  fetch(`${API}/api/analyses/${id}`)
+  fetch(`${API_BASE}/api/analyses/${id}`)
     .then(r => r.json())
     .then(data => {
       if (data.error) throw new Error(data.error);
@@ -2585,7 +2594,7 @@ async function loadEditorNotes(analysisId) {
     return;
   }
   try {
-    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}`);
+    const res = await fetch(`${API_BASE}/api/analyses/${editorAnalysisId}`);
     const data = await res.json();
     editorNotes = (data.coachNotes || []).map(n => ({
       _id: String(n._id),
@@ -2665,7 +2674,7 @@ async function addEditorNote() {
   const btn = document.getElementById('editor-note-add-btn');
   btn.disabled = true;
   try {
-    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}/notes`, {
+    const res = await fetch(`${API_BASE}/api/analyses/${editorAnalysisId}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ timestamp, text }),
@@ -2714,7 +2723,7 @@ async function saveEditNote(noteId) {
   const newText = (ta.value || '').trim();
   if (!newText) return;
   try {
-    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}/notes/${noteId}`, {
+    const res = await fetch(`${API_BASE}/api/analyses/${editorAnalysisId}/notes/${noteId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: newText }),
@@ -2732,7 +2741,7 @@ async function saveEditNote(noteId) {
 async function deleteNote(noteId) {
   if (!confirm('למחוק את ההערה?')) return;
   try {
-    const res = await fetch(`${API}/api/analyses/${editorAnalysisId}/notes/${noteId}`, { method: 'DELETE' });
+    const res = await fetch(`${API_BASE}/api/analyses/${editorAnalysisId}/notes/${noteId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete');
     editorNotes = editorNotes.filter(n => n._id !== noteId);
     renderEditorNotes();
