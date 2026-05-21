@@ -5,6 +5,11 @@ import { Analysis, Verification } from '../database';
 const router = Router();
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
+// verify.ts does text-only consistency checks and may want a cheaper model
+// than the main analyzer. Falls back to GEMINI_MODEL, then a hardcoded
+// default, so adding GEMINI_VERIFY_MODEL is optional.
+const verifyModel = process.env.GEMINI_VERIFY_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 router.post('/:analysisId', async (req: Request, res: Response) => {
   try {
     const analysis = await Analysis.findById(req.params.analysisId);
@@ -46,7 +51,7 @@ Return ONLY a valid JSON object:
 
       try {
         const result = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: verifyModel,
           contents: prompt,
         });
         const text = (result.text || '')
