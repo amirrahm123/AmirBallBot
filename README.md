@@ -13,7 +13,7 @@ The frontend auto-detects whether it's running locally and talks to a local back
    ANTHROPIC_API_KEY=...
    GEMINI_API_KEY=...
    MONGODB_URI=...     # Atlas connection string, optional but the job queue / saved analyses need it
-   PORT=10000          # optional; this is the default
+   PORT=3000          # optional; this is the default
    ```
    `.env` is already gitignored. If it doesn't exist on your machine, create it before starting the server.
 
@@ -25,14 +25,14 @@ The frontend auto-detects whether it's running locally and talks to a local back
    ```
    npm run dev
    ```
-   This runs `tsx watch src/server.ts`, which auto-reloads on every file save. Look for `🏀 AmirBallBot API running on port 10000`.
+   This runs `tsx watch src/server.ts`, which auto-reloads on every file save. Look for `🏀 AmirBallBot API running on port 3000`.
 
 2. **Open the frontend** by any of these methods:
    - Double-click `index.html` (opens via `file://`) — works because CORS allows `file://` and any `localhost:*` origin.
    - VS Code Live Server (`localhost:5500`).
    - `python -m http.server 3000` then visit `http://localhost:3000/index.html`.
 
-3. The frontend detects `localhost` / `127.0.0.1` / empty hostname (file://) and talks to `http://localhost:10000`. Anywhere else (Vercel, prod) it talks to Railway.
+3. The frontend detects `localhost` / `127.0.0.1` / empty hostname (file://) and talks to `http://localhost:3000`. Anywhere else (Vercel, prod) it talks to Railway.
 
 ### Testing the verify scoring flow
 

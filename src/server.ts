@@ -14,7 +14,7 @@ import videoRouter from './routes/video';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 // CORS — allow Vercel frontend in production and any localhost port
 // (or file://) during local development. Function form lets us match
