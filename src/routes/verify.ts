@@ -5,7 +5,7 @@ import { Analysis, Verification } from '../database';
 const router = Router();
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-router.post('/verify/:analysisId', async (req: Request, res: Response) => {
+router.post('/:analysisId', async (req: Request, res: Response) => {
   try {
     const analysis = await Analysis.findById(req.params.analysisId);
     if (!analysis) {
