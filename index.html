@@ -795,7 +795,7 @@ textarea{resize:vertical;min-height:80px}
 const API_BASE = (() => {
   const host = window.location.hostname;
   if (!host || host === 'localhost' || host === '127.0.0.1') {
-    return 'http://localhost:10000';
+    return 'http://localhost:3000';
   }
   return 'https://amirballbot-production.up.railway.app';
 })();
