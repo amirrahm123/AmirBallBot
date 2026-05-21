@@ -1188,11 +1188,9 @@ function renderAnalysis(data) {
     coachVerdicts = {};
     document.getElementById('verify-save-btn').classList.remove('hidden');
     updateVerifyScore();
-    // Show manual buttons on all cards
-    plays_.forEach((_, i) => {
-      const buttons = document.getElementById('verify-buttons-' + i);
-      if (buttons) buttons.classList.remove('hidden');
-    });
+    // (verify buttons are always visible in the play-card template — no
+    // need to un-hide them here, and trying to do so before the cards'
+    // innerHTML is set was a silent no-op.)
   } else {
     verifyBar.classList.add('hidden');
   }
@@ -1241,7 +1239,7 @@ function renderAnalysis(data) {
       </div>
       <div class="play-note">${p.note||''}</div>
       ${corrRow}
-      <div class="verify-buttons hidden" id="verify-buttons-${i}" style="display:flex;gap:8px;padding:6px 0" onclick="event.stopPropagation()">
+      <div class="verify-buttons" id="verify-buttons-${i}" style="display:flex;gap:8px;padding:6px 0" onclick="event.stopPropagation()">
         <button id="verify-yes-${i}" class="btn btn-sm" style="font-size:12px;padding:4px 12px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;opacity:0.85" onclick="coachOverride(${i},true)">✅ כן</button>
         <button id="verify-no-${i}" class="btn btn-sm" style="font-size:12px;padding:4px 12px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;opacity:0.85" onclick="coachOverride(${i},false)">❌ לא</button>
       </div>
