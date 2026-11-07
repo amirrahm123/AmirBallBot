@@ -1,4 +1,12 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import dns from 'dns';
+
+// Some home routers / ISPs refuse the DNS SRV lookup that mongodb+srv:// needs
+// (querySrv ECONNREFUSED, common on Windows). Use public resolvers for this process.
+// Set MONGO_DNS=system to keep the machine's own DNS.
+if (process.env.MONGO_DNS !== 'system') {
+  try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch { /* keep system DNS */ }
+}
 
 // === Types ===
 
