@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { TeamKnowledge, Job } from './database';
+import { runPipelineV2 } from './pipeline/v2';
 import {
   BRAIN_VOCABULARY,
   BRAIN_OFFENSIVE_PRINCIPLES,
@@ -492,6 +493,7 @@ interface GeminiPlay {
  * Inline requests are capped at ~20MB, so larger videos are re-encoded small.
  */
 export function useInlineVideo(): boolean {
+  if (process.env.ANALYZER !== 'v1') return true; // v2 always works from the local file
   if (process.env.GEMINI_INLINE === '1') return true;
   if (process.env.GEMINI_INLINE === '0') return false;
   return (process.env.GEMINI_API_KEY || '').trim().startsWith('AQ.');
@@ -2171,6 +2173,19 @@ Examples of BAD observations (DO NOT generate these):
 
 /** Shared pipeline: Gemini video → Claude enrichment → insights */
 async function runVideoPipeline(videoPath: string, context: string, focus: string, teamName: string, roster: string, geminiFileUri?: string, jerseyColor?: string, opponentJerseyColor?: string, onProgress?: ProgressCb): Promise<AnalysisResult> {
+  // v2 pipeline (default): survey → select → deep dive → coach write-up.
+  // Needs the local file; ANALYZER=v1 restores the old path.
+  if (videoPath && process.env.ANALYZER !== 'v1') {
+    const [knowledge, corrections] = await Promise.all([
+      getKnowledgeContext(teamName).catch(() => ''),
+      loadRecentCorrections(teamName).catch(() => ''),
+    ]);
+    return runPipelineV2({
+      videoPath, context, focus, teamName, roster, jerseyColor, opponentJerseyColor,
+      extraContext: [knowledge, corrections].filter(Boolean).join('\n\n'), onProgress,
+    }) as Promise<AnalysisResult>;
+  }
+
   // Determine fileUri — upload if needed
   let fileUri = geminiFileUri || '';
   const mimeType = 'video/mp4';
