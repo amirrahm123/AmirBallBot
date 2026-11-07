@@ -87,6 +87,9 @@ async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
         insights: result.insights,
         playCount: result.plays?.length || 0,
         videoUrl: result.videoUrl || '',
+        videoPath: fs.existsSync(persistPath) ? persistPath : '',
+        possessionLog: (result as any).possessionLog || [],
+        meta: { teamName: input.teamName, roster, jerseyColor: input.jerseyColor, opponentJerseyColor: input.opponentJerseyColor },
       });
       (result as any).analysisId = savedAnalysis._id;
       console.log(`💾 Analysis saved: ${savedAnalysis._id}`);

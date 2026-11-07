@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
+import fs from 'fs';
 import { Analysis } from '../database';
+import { deepDivePlay } from '../pipeline/v2';
 
 const router = Router();
 
@@ -23,6 +25,31 @@ router.get('/', async (_req: Request, res: Response) => {
   } catch (err: any) {
     console.error('❌ שגיאה בטעינת ניתוחים:', err);
     res.status(500).json({ error: 'שגיאה בטעינת ניתוחים' });
+  }
+});
+
+// POST /api/analyses/:id/plays/:idx/deep — re-watch one possession closely and rewrite its card
+router.post('/:id/plays/:idx/deep', async (req: Request, res: Response) => {
+  try {
+    const id = paramStr(req.params.id);
+    const idx = Number(paramStr(req.params.idx));
+    if (!isValidObjectId(id)) { res.status(400).json({ error: 'מזהה לא תקין' }); return; }
+    const a: any = await Analysis.findById(id);
+    if (!a) { res.status(404).json({ error: 'ניתוח לא נמצא' }); return; }
+    const play = a.plays?.[idx];
+    if (!play) { res.status(404).json({ error: 'מהלך לא נמצא' }); return; }
+    if (!a.videoPath || !fs.existsSync(a.videoPath)) { res.status(409).json({ error: 'הסרטון של הניתוח הזה כבר לא שמור בשרת' }); return; }
+    const poss = (a.possessionLog || []).find((p: any) => p.id === play.possessionId);
+    if (!poss) { res.status(409).json({ error: 'הניתוח הזה נוצר במנוע ישן, אין לו יומן פוזשנים' }); return; }
+    console.log(`🔬 Deep dive: analysis ${id} play ${idx} (${play.startTime})`);
+    const updated = await deepDivePlay(a.videoPath, poss, a.meta || {});
+    a.plays[idx] = { ...play, ...updated, deepDived: true };
+    a.markModified('plays');
+    await a.save();
+    res.json({ play: a.plays[idx] });
+  } catch (err: any) {
+    console.error('❌ deep dive failed:', err);
+    res.status(500).json({ error: err?.message || 'שגיאה בניתוח לעומק' });
   }
 });
 

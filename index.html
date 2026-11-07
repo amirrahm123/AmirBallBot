@@ -1150,6 +1150,27 @@ function seekVideo(seconds, endSeconds) {
   }
 }
 
+// Re-watch one possession closely (1 Gemini + 1 Claude call) and refresh its card
+async function deepDivePlay(analysisId, idx) {
+  const btn = document.getElementById(`deep-btn-${idx}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> צופה שוב במהלך…'; }
+  try {
+    const res = await fetch(`${API_BASE}/api/analyses/${analysisId}/plays/${idx}/deep`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'שגיאה');
+    const p = data.play;
+    if (currentAnalysis && currentAnalysis.plays) currentAnalysis.plays[idx] = p;
+    const note = document.getElementById(`play-note-${idx}`);
+    if (note) note.innerHTML = p.note || '';
+    const card = document.getElementById(`play-card-${idx}`);
+    if (card) { const l = card.querySelector('.play-label'); if (l) l.textContent = p.label || ''; const pl = card.querySelector('.play-players'); if (pl) pl.textContent = (p.players || []).join(', '); card.classList.add('expanded'); }
+    if (btn) { btn.innerHTML = '🔬 נותח לעומק'; btn.disabled = false; }
+  } catch (e) {
+    if (btn) { btn.innerHTML = '🔬 נתח שוב לעומק'; btn.disabled = false; }
+    alert('הניתוח לעומק נכשל: ' + e.message);
+  }
+}
+
 function setupVideoPlayer(serverVideoUrl) {
   const container = document.getElementById('video-player-container');
   const wrapper = document.getElementById('video-player-wrapper');
@@ -1265,7 +1286,8 @@ function renderAnalysis(data) {
         <span class="play-players">${(p.players||[]).join(', ')}</span>
         <span class="verify-icon" id="verify-icon-${i}" style="margin-right:auto;font-size:16px"></span>
       </div>
-      <div class="play-note">${p.note||''}</div>
+      <div class="play-note" id="play-note-${i}">${p.note||''}</div>
+      ${(data.analysisId || data._id) && p.possessionId ? `<div onclick="event.stopPropagation()" style="padding:4px 0"><button id="deep-btn-${i}" onclick="deepDivePlay('${data.analysisId || data._id}', ${i})" style="background:#0d0d1f;border:1px solid #444;color:#aaa;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px" title="צפייה חוזרת מדוקדקת במהלך הזה בלבד">${p.deepDived ? '🔬 נותח לעומק' : '🔬 נתח שוב לעומק'}</button></div>` : ''}
       ${corrRow}
       <div class="verify-buttons" id="verify-buttons-${i}" style="display:flex;gap:8px;padding:6px 0" onclick="event.stopPropagation()">
         <button id="verify-yes-${i}" class="btn btn-sm" style="font-size:12px;padding:4px 12px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;opacity:0.85" onclick="coachOverride(${i},true)">✅ כן</button>

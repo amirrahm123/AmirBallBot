@@ -130,6 +130,9 @@ const AnalysisSchema = new mongoose.Schema({
   insights: Array,
   playCount: Number,
   videoUrl: { type: String, default: '' },
+  videoPath: { type: String, default: '' },
+  possessionLog: { type: Array, default: [] },
+  meta: { type: mongoose.Schema.Types.Mixed, default: {} },
   coachNotes: [{
     timestamp: { type: Number, required: true },
     text: { type: String, required: true },
