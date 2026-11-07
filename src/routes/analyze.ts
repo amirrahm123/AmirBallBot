@@ -89,6 +89,7 @@ async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
         videoUrl: result.videoUrl || '',
         videoPath: fs.existsSync(persistPath) ? persistPath : '',
         possessionLog: (result as any).possessionLog || [],
+        warnings: (result as any).warnings || [],
         meta: { teamName: input.teamName, roster, jerseyColor: input.jerseyColor, opponentJerseyColor: input.opponentJerseyColor },
       });
       (result as any).analysisId = savedAnalysis._id;

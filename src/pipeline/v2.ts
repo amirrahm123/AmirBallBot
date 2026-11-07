@@ -53,6 +53,7 @@ export interface V2Play {
 
 export interface V2Result {
   game: string;
+  warnings?: string[];
   plays: V2Play[];
   insights: { type: 'good' | 'warn' | 'bad'; title: string; body: string }[];
   shotChart: { paint: number; midRange: number; corner3: number; aboveBreak3: number; pullUp: number };
@@ -357,7 +358,9 @@ async function surveyChunk(i: V2Input, s: number, len: number, duration: number,
   }
 }
 
+let surveyWarnings: string[] = [];
 async function survey(i: V2Input, duration: number, dir: string, hash: string): Promise<Possession[]> {
+  surveyWarnings = [];
   const starts: number[] = [];
   for (let s = 0; s < duration - 5; s += CHUNK_SEC - CHUNK_OVERLAP) starts.push(s);
   let done = 0;
@@ -377,6 +380,7 @@ async function survey(i: V2Input, duration: number, dir: string, hash: string): 
     } catch (e: any) {
       console.error(`   ❌ survey ${mmss(s)} failed: ${e?.message || e}`);
       if (/GEMINI_DAILY_QUOTA/.test(String(e?.message))) throw e;
+      surveyWarnings.push(`הקטע ${mmss(s)}–${mmss(s + len)} לא נסרק (${String(e?.message || e).slice(0, 60)})`);
     } finally {
       done++;
       i.onProgress?.(10 + Math.round((done / starts.length) * 55), `סורק את המשחק… ${done}/${starts.length}`);
@@ -399,10 +403,19 @@ async function survey(i: V2Input, duration: number, dir: string, hash: string): 
 }
 
 // ---------- 2. COACH (select + write, one call, with frames) ----------
+const GLOSSARY = `TERMINOLOGY — use exactly these forms, every time, so all cards read as one voice:
+Players: write the name exactly as it appears in the roster (Latin letters), surname only — "Dort", "Hartenstein", "Holmgren". When two roster players share a surname (e.g. Jalen Williams / Jaylin Williams / Kenrich Williams) ALWAYS use the full roster name. Add the jersey number on first mention in each card: "Dort (#5)". Opponents: Latin surname as the broadcast shows it — "LeBron", "Dončić", "Reaves", "Ayton". Never transliterate names into Hebrew letters.
+Actions (one spelling each): pick and roll · pick and pop · handoff · post-up · isolation · drive · kick-out · cut · backdoor · off-ball screen · drop coverage · switch · hedge · closeout · help side · rotation · box-out · ריבאונד התקפי / ריבאונד הגנתי · איבוד כדור · סטיל · בלוק · עבירה · מעבר (fast break) · secondary break.
+Shots: לייאפ · דאנק · alley-oop · floater · pull-up · fadeaway · step-back · catch-and-shoot · שלשה · זריקה מהבינוני · זריקה מהצבע.
+Court spots: הצבע · dunker spot · הפינה (corner) · הכנף (wing) · ה-slot · המרפק (elbow) · למעלה (top) · short corner · weak side / strong side.
+Never alternate between synonyms (not "חסימה" one time and "סקרין" the next, not "פדאווי" and "fadeaway"). Hebrew for everything else.`;
+
 const COACH_SYSTEM = `You are an elite basketball coach and video coordinator (Euroleague / NBA level) preparing film for a coaching staff.
 You think in cause and effect: every possession is a chain of decisions, and you name the link that decided it.
 You never invent events. The possession log is a first pass by a video model; the frames are ground truth. When they disagree, trust the frames and say what you corrected.
-You write in natural professional Hebrew; basketball terms coaches use in English (pick and roll, help side, closeout, dunker spot) may stay in English.`;
+You write in natural professional Hebrew.
+
+${GLOSSARY}`;
 
 function keyMoments(p: Possession): number[] {
   const ts = p.chain.map(e => e.t).filter(t => t >= p.start - 1 && t <= p.end + 1);
@@ -421,7 +434,8 @@ ${i.roster ? `Focus-team roster: ${i.roster}\n` : ''}${i.focus && i.focus !== 'a
 Below is the complete possession log of the video (${log.length} possessions), each followed by frames taken at its key moments (labelled with the possession id and the video time).
 
 YOUR TASK
-1. Choose between ${Math.min(MIN_PLAYS, log.length)} and ${Math.min(MAX_PLAYS, log.length)} possessions worth showing the staff: clear good execution, clear mistakes, and possessions that scored but could have been run better. Mix offense and defense, spread across the video, prefer readable cause-and-effect chains, skip low-confidence or trivial ones.
+1. Choose between ${Math.min(MIN_PLAYS, log.length)} and ${Math.min(MAX_PLAYS, log.length)} possessions worth showing the staff: clear good execution, clear mistakes, and possessions that scored but could have been run better. Mix offense and defense, prefer readable cause-and-effect chains, skip low-confidence or trivial ones.
+   COVERAGE RULE: the picks must span the whole video — include at least one possession from each ${CHUNK_SEC / 60}-minute segment that has possessions in the log (the log is grouped by segment below). Do not cluster everything in one stretch.
 2. For each chosen possession, using the log AND the frames, write:
    - label: short name of what actually happened (not a guessed set name).
    - what_happened: the cause-and-effect story in 2–4 sentences, in order.
@@ -440,7 +454,10 @@ Return JSON only:
 POSSESSION LOG:`);
 
   let frames = 0;
+  let seg = -1;
   for (const p of log) {
+    const thisSeg = Math.floor(p.start / CHUNK_SEC);
+    if (thisSeg !== seg) { seg = thisSeg; content.push(`\n===== segment ${mmss(seg * CHUNK_SEC)}–${mmss((seg + 1) * CHUNK_SEC)} =====`); }
     const dur = p.end - p.start;
     content.push(`\n[#${p.id}] ${mmss(p.start)}–${mmss(p.end)}${p.game_clock ? ` (${p.game_clock})` : ''} | offense: ${p.offense}${p.transition ? ' | transition' : ''} | ${p.points} pts | confidence ${p.confidence}${dur > 28 ? ` | ⚠ ${Math.round(dur)}s — probably two possessions merged; describe ONE and narrow start/end` : ''}
 chain: ${p.chain.map(e => `${e.t.toFixed(1)}s ${e.who}: ${e.what}${e.where ? ` (${e.where})` : ''}`).join(' → ')}
@@ -526,6 +543,9 @@ export async function runPipelineV2(i: V2Input): Promise<V2Result> {
     i.onProgress?.(10, 'סורק את המשחק…');
     const log = await survey(i, duration, dir, hash);
     console.log(`📋 Survey: ${log.length} possessions in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    const first = log[0]?.start ?? 0;
+    if (first > 60) { surveyWarnings.push(`לא זוהו פוזשנים לפני ${mmss(first)}`); console.warn(`⚠️ first possession only at ${mmss(first)}`); }
+    for (const w of surveyWarnings) console.warn(`⚠️ ${w}`);
     if (!log.length) throw new Error('לא זוהו פוזשנים בסרטון. בדוק שזה סרטון משחק ושהמפתח של Gemini תקין.');
 
     i.onProgress?.(70, 'המאמן צופה ברגעי המפתח וכותב ניתוח…');
@@ -556,6 +576,7 @@ export async function runPipelineV2(i: V2Input): Promise<V2Result> {
         type: ['good', 'warn', 'bad'].includes(x.type) ? x.type : 'warn', title: String(x.title), body: String(x.body || ''),
       })),
       shotChart: chart,
+      warnings: surveyWarnings.length ? [...surveyWarnings] : undefined,
       possessionLog: log,
       videoHash: hash,
     };

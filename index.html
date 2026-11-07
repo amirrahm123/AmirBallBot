@@ -536,6 +536,7 @@ textarea{resize:vertical;min-height:80px}
         <div class="stats-row" id="stat-cards"></div>
 
         <!-- Video player -->
+        <div id="analysis-warnings"></div>
         <div id="video-player-container" class="card hidden" style="margin-bottom:20px">
           <div class="card-header"><h3>סרטון המשחק</h3></div>
           <div id="video-player-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px">
@@ -1260,6 +1261,13 @@ function renderAnalysis(data) {
     <div class="stat-card"><span class="label">בעיות הגנתיות</span><span class="value red">${defenseIssues}</span></div>
     <div class="stat-card"><span class="label">נקודות חוזק</span><span class="value green">${highlights}</span></div>
   `;
+
+  // Pipeline warnings (e.g. a segment that could not be scanned)
+  const warnEl = document.getElementById('analysis-warnings');
+  if (warnEl) {
+    const ws = Array.isArray(data.warnings) ? data.warnings : [];
+    warnEl.innerHTML = ws.map(w => `<div style="background:rgba(255,197,68,.12);border:1px solid rgba(255,197,68,.4);color:var(--yellow);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:8px">⚠️ ${w}</div>`).join('');
+  }
 
   // Plays list
   document.getElementById('plays-count').textContent = plays.length + ' מהלכים';
