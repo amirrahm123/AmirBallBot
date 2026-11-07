@@ -1,4 +1,4 @@
-# AmirBallBot — Full Beta Plan
+# HoopAssist — Full Beta Plan
 
 **Status as of 2026-05-08:** functional for ≤5-min clips, zero auth, zero payments, no proof points on long videos.
 **Goal:** sellable to 10 paying Liga Ha'al coaches by end of June 2026.

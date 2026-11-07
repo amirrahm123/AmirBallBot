@@ -20,6 +20,7 @@ const PORT = process.env.PORT || 3000;
 // (or file://) during local development. Function form lets us match
 // arbitrary localhost ports without listing every dev-server choice.
 const PROD_ORIGINS = [
+  'https://hoopassist.vercel.app',
   'https://amirballbot.vercel.app',
   'https://amirballbot-amirrahm.vercel.app',
 ];
@@ -75,7 +76,7 @@ async function start() {
   ensureVideosDir();
   cleanupOldVideos();
   app.listen(PORT, () => {
-    console.log(`🏀 AmirBallBot API running on port ${PORT}`);
+    console.log(`🏀 HoopAssist API running on port ${PORT}`);
   });
 }
 

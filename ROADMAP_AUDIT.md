@@ -1,4 +1,4 @@
-# AmirBallBot / HoopMind — Full Audit & Roadmap
+# HoopAssist — Full Audit & Roadmap
 
 **Audit date:** 2026-05-09
 **Repo state at audit:** master @ `b1da469` (commits since fork from `6215186`: tier-cap feature, video TTL fix, plan+landing docs)

@@ -1,4 +1,4 @@
-# AmirBallBot / HoopMind
+# HoopAssist
 
 Basketball game analysis tool for Israeli Liga Leumit. Backend on Railway, frontend on Vercel, MongoDB Atlas for storage, Gemini + Anthropic Claude for the analysis pipeline.
 
@@ -25,7 +25,7 @@ The frontend auto-detects whether it's running locally and talks to a local back
    ```
    npm run dev
    ```
-   This runs `tsx watch src/server.ts`, which auto-reloads on every file save. Look for `🏀 AmirBallBot API running on port 3000`.
+   This runs `tsx watch src/server.ts`, which auto-reloads on every file save. Look for `🏀 HoopAssist API running on port 3000`.
 
 2. **Open the frontend** by any of these methods:
    - Double-click `index.html` (opens via `file://`) — works because CORS allows `file://` and any `localhost:*` origin.
