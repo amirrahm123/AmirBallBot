@@ -498,24 +498,52 @@ export function useInlineVideo(): boolean {
 }
 
 const INLINE_PREFIX = 'inline:';
-const INLINE_MAX_BYTES = 14 * 1024 * 1024; // raw bytes; base64 adds ~33%
+const MB = 1024 * 1024;
 const inlineCache = new Map<string, string>();
 
+function probeDuration(videoPath: string): number {
+  try {
+    const d = parseFloat(execFileSync(FFPROBE, [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', videoPath,
+    ], { encoding: 'utf-8', timeout: 30000 }).trim());
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  } catch { return 0; }
+}
+
+/**
+ * Shrinks the video so it fits in an inline request. Gemini samples video at
+ * 1 frame/second, so re-encoding at 2fps loses nothing it would have seen;
+ * the bitrate is computed from the duration so any length fits.
+ * Tries the safe ~20MB request size first, then the larger (<100MB) limit.
+ */
 function prepareInlineVideo(videoPath: string): string {
   const size = fs.statSync(videoPath).size;
-  if (size <= INLINE_MAX_BYTES) return videoPath;
-  const out = path.join(os.tmpdir(), `hoopassist-inline-${Date.now()}.mp4`);
-  console.log(`   🗜️ Video is ${(size / 1048576).toFixed(1)}MB — compressing for inline send...`);
-  execFileSync(FFMPEG, [
-    '-i', videoPath, '-vf', 'scale=-2:480', '-r', '12',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '32',
-    '-c:a', 'aac', '-b:a', '32k', '-movflags', '+faststart', out, '-y',
-  ], { stdio: 'inherit', timeout: 600000 });
-  const newSize = fs.statSync(out).size;
-  console.log(`   ✅ Compressed to ${(newSize / 1048576).toFixed(1)}MB`);
-  if (newSize > INLINE_MAX_BYTES) {
-    throw new Error(`הסרטון ארוך מדי לשליחה ישירה (${(newSize / 1048576).toFixed(1)}MB גם אחרי דחיסה). קצר אותו ל-2–3 דקות.`);
-  }
+  const safeBytes = 14 * MB;               // base64 → ~19MB request
+  const bigBytes = 60 * MB;                // base64 → ~80MB request
+  if (size <= safeBytes) return videoPath;
+
+  const duration = probeDuration(videoPath);
+  if (!duration) throw new Error('לא הצלחתי לקרוא את אורך הסרטון (ffprobe)');
+
+  const attempt = (budget: number, height: number): string => {
+    const kbps = Math.floor((budget * 8 * 0.85) / duration / 1000);
+    const out = path.join(os.tmpdir(), `hoopassist-inline-${Date.now()}.mp4`);
+    console.log(`   🗜️ ${(size / MB).toFixed(1)}MB, ${Math.round(duration)}s → ${height}p @2fps ~${kbps}kbps`);
+    execFileSync(FFMPEG, [
+      '-i', videoPath, '-vf', `scale=-2:${height},fps=2`, '-an',
+      '-c:v', 'libx264', '-preset', 'veryfast',
+      '-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`,
+      '-movflags', '+faststart', out, '-y',
+    ], { stdio: 'inherit', timeout: 1800000 });
+    console.log(`   ✅ Compressed to ${(fs.statSync(out).size / MB).toFixed(1)}MB`);
+    return out;
+  };
+
+  // Enough bitrate for ~480p at 2fps inside the safe budget? Use it.
+  const safeKbps = (safeBytes * 8 * 0.85) / duration / 1000;
+  let out = safeKbps >= 150 ? attempt(safeBytes, 480) : attempt(bigBytes, 480);
+  if (fs.statSync(out).size > bigBytes) out = attempt(bigBytes * 0.8, 360);
   return out;
 }
 
@@ -581,15 +609,7 @@ async function detectPlayTimestamps(
   // 90-min game at the 15-play tier and nobody would notice.
   let videoDurationSeconds = 0;
   if (fileUri.startsWith(INLINE_PREFIX)) {
-    try {
-      const d = parseFloat(execFileSync(FFPROBE, [
-        '-v', 'error', '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1', fileUri.slice(INLINE_PREFIX.length),
-      ], { encoding: 'utf-8', timeout: 30000 }).trim());
-      if (Number.isFinite(d) && d > 0) videoDurationSeconds = d;
-    } catch (err) {
-      console.error('❌ ffprobe failed to read video duration:', err);
-    }
+    videoDurationSeconds = probeDuration(fileUri.slice(INLINE_PREFIX.length));
   } else try {
     const nameMatch = fileUri.match(/files\/[^/]+$/);
     if (nameMatch) {
