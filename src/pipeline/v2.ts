@@ -17,7 +17,9 @@
  * auth keys; nothing is uploaded).
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
+import { promisify } from 'util';
+const execFileP = promisify(execFile);
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
@@ -121,9 +123,9 @@ function fileHash(p: string): string {
   return h.digest('hex').slice(0, 16);
 }
 
-function cutClip(src: string, start: number, len: number, fps: number, height: number, kbps: number, dir: string): string {
+async function cutClip(src: string, start: number, len: number, fps: number, height: number, kbps: number, dir: string): Promise<string> {
   const out = path.join(dir, `c_${Math.round(start * 10)}_${fps}_${height}.mp4`);
-  execFileSync(FFMPEG, ['-loglevel', 'error', '-ss', String(start), '-t', String(len), '-i', src,
+  await execFileP(FFMPEG, ['-loglevel', 'error', '-ss', String(start), '-t', String(len), '-i', src,
     '-vf', `scale=-2:${height},fps=${fps}`, '-c:v', 'libx264', '-preset', 'veryfast',
     '-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`,
     '-c:a', 'aac', '-ac', '1', '-b:a', '32k', '-movflags', '+faststart', out, '-y'],
@@ -131,10 +133,10 @@ function cutClip(src: string, start: number, len: number, fps: number, height: n
   return out;
 }
 
-function grabFrame(src: string, at: number, dir: string, height = 540): string | null {
+async function grabFrame(src: string, at: number, dir: string, height = 540): Promise<string | null> {
   const out = path.join(dir, `f_${Math.round(at * 10)}.jpg`);
   try {
-    execFileSync(FFMPEG, ['-loglevel', 'error', '-ss', String(Math.max(0, at)), '-i', src,
+    await execFileP(FFMPEG, ['-loglevel', 'error', '-ss', String(Math.max(0, at)), '-i', src,
       '-frames:v', '1', '-vf', `scale=-2:${height}`, '-q:v', '4', out, '-y'], { timeout: 60000 });
     return fs.existsSync(out) ? out : null;
   } catch { return null; }
@@ -179,7 +181,8 @@ async function retry<T>(fn: () => Promise<T>, label: string, attempts = 4): Prom
       const msg = String(err?.message || err);
       if (/GEMINI_DAILY_QUOTA/.test(msg)) throw err;
       const is429 = err?.status === 429 || /429|RESOURCE_EXHAUSTED/.test(msg);
-      const transient = is429 || [500, 503, 529].includes(err?.status) || /500|503|529|overloaded|high demand|UNAVAILABLE|JSON parse/i.test(msg);
+      const network = /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|network|timeout|aborted/i.test(msg);
+      const transient = is429 || network || [500, 503, 529].includes(err?.status) || /500|503|529|overloaded|high demand|UNAVAILABLE|JSON parse/i.test(msg);
       if (!transient || i >= attempts) throw err;
       if (is429) onRateLimited();
       const hinted = Number((msg.match(/retry in ([\d.]+)s/i) || [])[1]);
@@ -237,11 +240,13 @@ function mediaRes(MR: any, mode: 'survey' | 'deep') {
 
 async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: number, schema?: object, mode: 'survey' | 'deep' = 'survey'): Promise<any> {
   const { GoogleGenAI, MediaResolution } = await loadGenAI();
-  const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || '').trim() });
+  // 150s cap per request: a hung upload must not eat 5 minutes before we retry
+  const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || '').trim(), httpOptions: { timeout: 150000 } });
   const data = fs.readFileSync(clipPath).toString('base64');
   for (const model of modelChain()) {
     if (isExhausted(model)) continue;
     await pace();
+    const tReq = Date.now();
     try {
       const res = await ai.models.generateContent({
         model,
@@ -256,7 +261,7 @@ async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: 
         ] }],
       });
       const u: any = (res as any).usageMetadata;
-      if (u) console.log(`   · ${model}: ${u.promptTokenCount ?? '?'} in / ${u.candidatesTokenCount ?? '?'} out tokens`);
+      if (u) console.log(`   · ${model}: ${u.promptTokenCount ?? '?'} in / ${u.candidatesTokenCount ?? '?'} out tokens, ${((Date.now() - tReq) / 1000).toFixed(0)}s`);
       return parseJson(typeof res.text === 'string' ? res.text : '');
     } catch (err: any) {
       const msg = String(err?.message || err);
@@ -333,8 +338,8 @@ async function surveyChunk(i: V2Input, s: number, len: number, duration: number,
     console.log(`   📋 ${mmss(s)}–${mmss(s + len)}: ${list.length} possessions (cached)`);
     return list;
   }
-  let clip = cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 700, dir);
-  if (fs.statSync(clip).size > 13 * 1024 * 1024) { fs.rmSync(clip, { force: true }); clip = cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 450, dir); }
+  let clip = await cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 700, dir);
+  if (fs.statSync(clip).size > 13 * 1024 * 1024) { fs.rmSync(clip, { force: true }); clip = await cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 450, dir); }
   try {
     const json = await retry(() => gemini(clip, SURVEY_FPS, surveyPrompt(i, len), 16384, SURVEY_SCHEMA), `survey ${mmss(s)}`);
     const raw = Array.isArray(json?.possessions) ? json.possessions : [];
@@ -453,6 +458,10 @@ Return JSON only:
 
 POSSESSION LOG:`);
 
+  // Plan which frames to grab, cut them all in parallel (ffmpeg is the slow part), then assemble.
+  const plan: { p: Possession; t: number }[] = [];
+  for (const p of log) for (const t of keyMoments(p).slice(-perPoss)) { if (plan.length >= 40) break; plan.push({ p, t }); }
+  const grabbed = await pool(plan, 6, ({ t }) => grabFrame(i.videoPath, t, dir));
   let frames = 0;
   let seg = -1;
   for (const p of log) {
@@ -462,15 +471,13 @@ POSSESSION LOG:`);
     content.push(`\n[#${p.id}] ${mmss(p.start)}–${mmss(p.end)}${p.game_clock ? ` (${p.game_clock})` : ''} | offense: ${p.offense}${p.transition ? ' | transition' : ''} | ${p.points} pts | confidence ${p.confidence}${dur > 28 ? ` | ⚠ ${Math.round(dur)}s — probably two possessions merged; describe ONE and narrow start/end` : ''}
 chain: ${p.chain.map(e => `${e.t.toFixed(1)}s ${e.who}: ${e.what}${e.where ? ` (${e.where})` : ''}`).join(' → ')}
 outcome: ${p.outcome}${p.positions_at_key_moment ? `\npositions: ${p.positions_at_key_moment}` : ''}`);
-    const moments = keyMoments(p).slice(-perPoss);
-    for (const t of moments) {
-      if (frames >= 40) break;
-      const f = grabFrame(i.videoPath, t, dir);
-      if (!f) continue;
-      content.push(`frame #${p.id} @ ${t.toFixed(1)}s:`);
+    plan.forEach((pl, k) => {
+      const f = grabbed[k];
+      if (pl.p !== p || !f) return;
+      content.push(`frame #${p.id} @ ${pl.t.toFixed(1)}s:`);
       content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(f).toString('base64') } });
       frames++;
-    }
+    });
   }
   console.log(`🖼️ Sending ${frames} key frames to Claude`);
   return retry(() => claude(COACH_SYSTEM, content, 16000), 'coach', 2);
@@ -483,7 +490,7 @@ export async function deepDivePlay(videoPath: string, p: Possession, meta: Pick<
     const duration = probeDuration(videoPath);
     const start = Math.max(0, p.start - 3);
     const len = Math.min(duration - start, Math.max(8, p.end - p.start + 5));
-    const clip = cutClip(videoPath, start, len, DEEP_FPS, 720, 1800, dir);
+    const clip = await cutClip(videoPath, start, len, DEEP_FPS, 720, 1800, dir);
     const i = { ...meta, videoPath, context: '', focus: '' } as V2Input;
     const seen = await retry(() => gemini(clip, DEEP_FPS, `You are a basketball video coordinator breaking down ONE possession for a coaching staff.
 ${teamsLine(i)}
