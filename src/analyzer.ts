@@ -115,7 +115,7 @@ const FFPROBE = fs.existsSync(path.join(BIN_DIR, 'ffprobe.exe'))
   : 'ffprobe';
 
 // Gemini model identifier. Default keeps current behavior; override via env to A/B test.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
 const SYSTEM_PROMPT = `אתה אנליסט כדורסל מקצועי ישראלי. נתח את התמונות האלה ממשחק כדורסל והחזר JSON בלבד:
 {
