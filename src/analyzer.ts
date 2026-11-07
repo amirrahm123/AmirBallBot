@@ -485,8 +485,57 @@ interface GeminiPlay {
   what_i_actually_saw?: string;
 }
 
+/**
+ * New Google "auth keys" (AQ.…) are rejected by the Gemini Files API
+ * (ACCESS_TOKEN_TYPE_UNSUPPORTED), so with those keys — or GEMINI_INLINE=1 —
+ * the video is sent inline (base64) in each request instead of uploaded.
+ * Inline requests are capped at ~20MB, so larger videos are re-encoded small.
+ */
+export function useInlineVideo(): boolean {
+  if (process.env.GEMINI_INLINE === '1') return true;
+  if (process.env.GEMINI_INLINE === '0') return false;
+  return (process.env.GEMINI_API_KEY || '').trim().startsWith('AQ.');
+}
+
+const INLINE_PREFIX = 'inline:';
+const INLINE_MAX_BYTES = 14 * 1024 * 1024; // raw bytes; base64 adds ~33%
+const inlineCache = new Map<string, string>();
+
+function prepareInlineVideo(videoPath: string): string {
+  const size = fs.statSync(videoPath).size;
+  if (size <= INLINE_MAX_BYTES) return videoPath;
+  const out = path.join(os.tmpdir(), `hoopassist-inline-${Date.now()}.mp4`);
+  console.log(`   🗜️ Video is ${(size / 1048576).toFixed(1)}MB — compressing for inline send...`);
+  execFileSync(FFMPEG, [
+    '-i', videoPath, '-vf', 'scale=-2:480', '-r', '12',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '32',
+    '-c:a', 'aac', '-b:a', '32k', '-movflags', '+faststart', out, '-y',
+  ], { stdio: 'inherit', timeout: 600000 });
+  const newSize = fs.statSync(out).size;
+  console.log(`   ✅ Compressed to ${(newSize / 1048576).toFixed(1)}MB`);
+  if (newSize > INLINE_MAX_BYTES) {
+    throw new Error(`הסרטון ארוך מדי לשליחה ישירה (${(newSize / 1048576).toFixed(1)}MB גם אחרי דחיסה). קצר אותו ל-2–3 דקות.`);
+  }
+  return out;
+}
+
+/** Build the Gemini part for a video — inline base64 or Files API URI */
+function videoPart(fileUri: string, mimeType: string): any {
+  if (fileUri.startsWith(INLINE_PREFIX)) {
+    const p = fileUri.slice(INLINE_PREFIX.length);
+    let data = inlineCache.get(p);
+    if (!data) { data = fs.readFileSync(p).toString('base64'); inlineCache.set(p, data); }
+    return { inlineData: { data, mimeType } };
+  }
+  return { fileData: { fileUri, mimeType } };
+}
+
 /** Helper: upload video to Gemini Files API and return fileUri */
 async function uploadVideoToGemini(videoPath: string): Promise<{ fileUri: string; mimeType: string }> {
+  if (useInlineVideo()) {
+    console.log('   📎 Inline video mode (Files API not used)');
+    return { fileUri: INLINE_PREFIX + prepareInlineVideo(videoPath), mimeType: 'video/mp4' };
+  }
   const { GoogleGenAI, FileState } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -531,7 +580,17 @@ async function detectPlayTimestamps(
   // valid duration, fail loudly — a silent fallback would silently cap a
   // 90-min game at the 15-play tier and nobody would notice.
   let videoDurationSeconds = 0;
-  try {
+  if (fileUri.startsWith(INLINE_PREFIX)) {
+    try {
+      const d = parseFloat(execFileSync(FFPROBE, [
+        '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', fileUri.slice(INLINE_PREFIX.length),
+      ], { encoding: 'utf-8', timeout: 30000 }).trim());
+      if (Number.isFinite(d) && d > 0) videoDurationSeconds = d;
+    } catch (err) {
+      console.error('❌ ffprobe failed to read video duration:', err);
+    }
+  } else try {
     const nameMatch = fileUri.match(/files\/[^/]+$/);
     if (nameMatch) {
       const fileResponse = await ai.files.get({ name: nameMatch[0] });
@@ -647,7 +706,7 @@ When uncertain, INCLUDE the timestamp. Missing a real play is worse than emittin
         contents: [{
           role: 'user',
           parts: [
-            { fileData: { fileUri, mimeType } },
+            videoPart(fileUri, mimeType),
             { text: prompt },
           ],
         }],
@@ -1067,7 +1126,7 @@ async function analyzeClipAtTimestamp(
           role: 'user',
           parts: [
             {
-              fileData: { fileUri, mimeType },
+              ...videoPart(fileUri, mimeType),
               videoMetadata: {
                 startOffset: `${startSeconds}s`,
                 endOffset: `${endSeconds}s`,

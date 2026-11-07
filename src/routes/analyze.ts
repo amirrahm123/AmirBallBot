@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
-import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile, ProgressCb, AnalysisResult, VIDEOS_DIR, ensureVideosDir } from '../analyzer';
+import { analyzeVideo, analyzeYouTube, analyzeImage, analyzeGeminiFile, useInlineVideo, ProgressCb, AnalysisResult, VIDEOS_DIR, ensureVideosDir } from '../analyzer';
 import { Player, Analysis, Job } from '../database';
 import { GoogleGenAI, FileState } from '@google/genai';
 
@@ -165,6 +165,11 @@ router.post('/upload-video', upload.single('file'), async (req: Request, res: Re
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file' });
+    }
+    if (useInlineVideo()) {
+      // Files API rejects AQ. auth keys — frontend falls back to server upload
+      try { fs.unlinkSync(req.file.path); } catch {}
+      return res.status(409).json({ error: 'inline-mode' });
     }
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const result = await ai.files.upload({
