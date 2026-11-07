@@ -105,7 +105,7 @@ async function retry<T>(fn: () => Promise<T>, label: string): Promise<T> {
     try { return await fn(); } catch (err: any) {
       const msg = String(err?.message || err);
       const transient = [429, 500, 503, 529].includes(err?.status) || /429|500|503|529|overloaded|high demand|RESOURCE_EXHAUSTED|UNAVAILABLE|JSON parse/i.test(msg);
-      if (!transient || i >= delays.length) throw err;
+      if (!transient || /GEMINI_DAILY_QUOTA/.test(msg) || i >= delays.length) throw err;
       const hinted = Number((msg.match(/retry in ([\d.]+)s/i) || [])[1]);
       const ms = Number.isFinite(hinted) && hinted > 0 ? (hinted + 2) * 1000 : delays[i] * 1000 * (0.8 + Math.random() * 0.4);
       console.log(`   ↻ ${label}: ${msg.slice(0, 80)} — retry in ${(ms / 1000).toFixed(0)}s`);
@@ -134,20 +134,51 @@ async function rateLimit(): Promise<void> {
   if (at > now) await new Promise(r => setTimeout(r, at - now));
 }
 
+// Free-tier quotas are per model (e.g. 20 requests/day each), so when one
+// model is used up for the day we move on to the next instead of failing.
+// GEMINI_FALLBACK_MODELS (comma list) overrides the chain.
+const exhaustedAt = new Map<string, number>();
+const exhausted = {
+  has: (m: string) => (exhaustedAt.get(m) || 0) > Date.now() - 6 * 3600 * 1000, // re-try a model after 6h
+  add: (m: string) => { exhaustedAt.set(m, Date.now()); },
+  get size() { return [...exhaustedAt.keys()].filter(m => exhausted.has(m)).length; },
+};
+function modelChain(): string[] {
+  const extra = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3-flash-preview')
+    .split(',').map(x => x.trim()).filter(Boolean);
+  return [...new Set([GEMINI_MODEL(), ...extra])];
+}
+
 async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: number): Promise<any> {
-  await rateLimit();
   const { GoogleGenAI } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || '').trim() });
   const data = fs.readFileSync(clipPath).toString('base64');
-  const res = await ai.models.generateContent({
-    model: GEMINI_MODEL(),
-    config: { temperature: 0.2, maxOutputTokens: maxTokens, responseMimeType: 'application/json' } as any,
-    contents: [{ role: 'user', parts: [
-      { inlineData: { data, mimeType: 'video/mp4' }, videoMetadata: { fps } } as any,
-      { text: prompt },
-    ] }],
-  });
-  return parseJson(typeof res.text === 'string' ? res.text : '');
+  for (const model of modelChain()) {
+    if (exhausted.has(model)) continue;
+    await rateLimit();
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        config: { temperature: 0.2, maxOutputTokens: maxTokens, responseMimeType: 'application/json' } as any,
+        contents: [{ role: 'user', parts: [
+          { inlineData: { data, mimeType: 'video/mp4' }, videoMetadata: { fps } } as any,
+          { text: prompt },
+        ] }],
+      });
+      return parseJson(typeof res.text === 'string' ? res.text : '');
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      const daily = /per day|PerDay/i.test(msg);
+      const unusable = [401, 403, 404].includes(err?.status) || /not found|not supported|ACCESS_TOKEN_TYPE_UNSUPPORTED/i.test(msg);
+      if (daily || unusable) {
+        exhausted.add(model);
+        console.log(`   ⚠️ ${model} ${daily ? 'used up its daily free quota' : 'is not available for this key'} — switching model`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('GEMINI_DAILY_QUOTA: נגמרה המכסה היומית החינמית של Gemini לכל המודלים. נסה שוב מחר, או הוסף חיוב ב-AI Studio.');
 }
 
 async function claude(system: string, user: string, maxTokens: number): Promise<any> {
@@ -349,7 +380,7 @@ export async function runPipelineV2(i: V2Input): Promise<V2Result> {
     i.onProgress?.(10, 'סורק את המשחק…');
     const log = await survey(i, duration, dir);
     console.log(`📋 Survey: ${log.length} possessions`);
-    if (!log.length) throw new Error('לא זוהו פוזשנים בסרטון. בדוק שזה סרטון משחק ושהמפתח של Gemini תקין.');
+    if (!log.length) throw new Error(exhausted.size >= modelChain().length ? 'נגמרה המכסה היומית החינמית של Gemini. נסה שוב מחר.' : 'לא זוהו פוזשנים בסרטון. בדוק שזה סרטון משחק ושהמפתח של Gemini תקין.');
 
     i.onProgress?.(56, 'בוחר את המהלכים החשובים…');
     const ids = await select(i, log);
