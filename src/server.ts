@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 3001;
 // CORS — allow Vercel frontend and local dev
 app.use(cors({
   origin: [
+    'https://hoopassist.vercel.app',
     'https://amirballbot.vercel.app',
     'https://amirballbot-amirrahm.vercel.app',
     'http://localhost:3000',
@@ -45,7 +46,7 @@ console.log('✅ Routes registered');
 async function start() {
   await connectDB();
   const server = app.listen(PORT, () => {
-    console.log(`🏀 AmirBallBot API running on port ${PORT}`);
+    console.log(`🏀 HoopAssist API running on port ${PORT}`);
   });
   // 25 minute timeout for long video analysis
   server.timeout = 25 * 60 * 1000;

@@ -1,10 +1,10 @@
-🏀 AmirBallBot
+🏀 HoopAssist
 AI game-film analysis for basketball coaches. Upload a full game, get back timestamped plays with Hebrew coaching notes, an annotatable film room, and an AI assistant that knows the game — built for Israeli Liga Leumit coaches who don't have a video department.
 
 Status: in active development. The core analysis loop is built and working end-to-end. A few surfaces (scouting reports, practice plans, Notion export) are UI-staged and on the roadmap — see Feature status below. I'd rather tell you exactly what's real than overclaim.
 
 <!-- 👇 HIGHEST-IMPACT THING TO ADD: a screen-recording GIF of the upload → analysis → editor flow. -->
-<!-- ![AmirBallBot demo](docs/demo.gif) -->
+<!-- ![HoopAssist demo](docs/demo.gif) -->
 ▶ [Add a 60-second demo GIF or video link here]
 <!-- Optional: 2–3 screenshots of the strongest screens (the timestamped-notes editor is the best one). -->
 

@@ -1,5 +1,5 @@
 {
-  "name": "amirballbot",
+  "name": "hoopassist",
   "version": "1.0.0",
   "description": "Basketball game analysis tool for Israeli Liga Leumit",
   "main": "dist/server.js",
