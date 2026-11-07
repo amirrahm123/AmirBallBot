@@ -82,7 +82,11 @@ textarea{resize:vertical;min-height:80px}
 .upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
 
 /* Play list */
-.play-item{background:var(--bg3);border-radius:8px;padding:14px 16px;cursor:pointer;transition:.2s;border:1px solid transparent}
+.play-item{background:var(--bg3);border-radius:8px;padding:14px 16px;cursor:pointer;transition:.2s;border:1px solid transparent;border-right:3px solid transparent}
+.play-item[data-verdict="good"]{border-right-color:var(--green)}
+.play-item[data-verdict="bad"]{border-right-color:var(--red)}
+.play-item[data-verdict="improve"]{border-right-color:var(--yellow)}
+.play-clock{font-size:11px;color:var(--text2);margin-right:6px}
 .play-item:hover{border-color:var(--border)}
 .play-item .play-header{display:flex;align-items:center;gap:12px}
 .play-item .play-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:90px}.play-item .play-time:hover{text-decoration:underline}
@@ -1278,9 +1282,10 @@ function renderAnalysis(data) {
         <input type="text" id="correction-text-${i}" placeholder="מה באמת קרה? שורה אחת" onclick="event.stopPropagation()" style="width:100%;padding:6px 10px;background:#111;border:1px solid #333;border-radius:6px;color:#fff;font-size:13px;direction:rtl;box-sizing:border-box;" />
         <button onclick="event.stopPropagation();saveCorrection(currentJobId, ${i})" style="margin-top:4px;background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;">שמור</button>
       </div>` : '';
-    return `<div class="play-item" id="play-card-${i}" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
+    return `<div class="play-item" id="play-card-${i}" data-verdict="${p.verdict||''}" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
       <div class="play-header">
         <span class="play-time" onclick="event.stopPropagation();seekVideo(${seekTime}, ${seekEnd})" style="cursor:pointer;text-decoration:underline dotted" title="צפה במהלך בסרטון">${timeDisplay}</span>
+        ${p.gameClock ? `<span class="play-clock">${p.gameClock}</span>` : ''}
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
         <span class="play-players">${(p.players||[]).join(', ')}</span>

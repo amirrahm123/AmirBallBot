@@ -48,6 +48,7 @@ export interface V2Play {
   verdict?: 'good' | 'bad' | 'improve';
   finish_location?: string;
   possessionId?: number;
+  gameClock?: string;
 }
 
 export interface V2Result {
@@ -67,6 +68,7 @@ export interface Possession {
   transition: boolean;
   chain: { t: number; who: string; what: string; where?: string }[];
   positions_at_key_moment?: string;
+  game_clock?: string;
   outcome: string;
   points: number;
   shot_location?: string;
@@ -84,7 +86,7 @@ const MIN_PLAYS = 10;
 const MAX_PLAYS = 15;
 const CONCURRENCY = Number(process.env.GEMINI_CONCURRENCY || 3);
 const CACHE_DIR = process.env.SURVEY_CACHE_DIR || path.join(os.tmpdir(), 'hoopassist-survey-cache');
-const SURVEY_VERSION = 'v2.2'; // bump when the survey prompt/schema changes
+const SURVEY_VERSION = 'v2.3'; // bump when the survey prompt/schema changes
 
 const BIN_DIR = path.join(__dirname, '..', '..', 'bin');
 const FFMPEG = fs.existsSync(path.join(BIN_DIR, 'ffmpeg.exe')) ? path.join(BIN_DIR, 'ffmpeg.exe') : 'ffmpeg';
@@ -210,6 +212,7 @@ const SURVEY_SCHEMA = {
             t: { type: 'number' }, who: { type: 'string' }, what: { type: 'string' }, where: { type: 'string' },
           }, required: ['t', 'who', 'what'] } },
           positions_at_key_moment: { type: 'string' },
+          game_clock: { type: 'string' },
           outcome: { type: 'string' }, points: { type: 'integer' },
           shot_location: { type: 'string', enum: ['paint', 'mid', 'corner3', 'above_break3', 'none'] },
           confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
@@ -226,7 +229,12 @@ let loadGenAI = async () => import('@google/genai');
 let loadAnthropic = async (): Promise<typeof Anthropic> => Anthropic;
 export function __setSdkLoaders(g?: typeof loadGenAI, a?: typeof loadAnthropic) { if (g) loadGenAI = g; if (a) loadAnthropic = a; }
 
-async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: number, schema?: object, lowRes = true): Promise<any> {
+function mediaRes(MR: any, mode: 'survey' | 'deep') {
+  const want = (process.env.GEMINI_MEDIA_RES || (mode === 'survey' ? 'medium' : 'high')).toLowerCase();
+  return want === 'low' ? MR.MEDIA_RESOLUTION_LOW : want === 'high' ? MR.MEDIA_RESOLUTION_HIGH : want === 'default' ? undefined : MR.MEDIA_RESOLUTION_MEDIUM;
+}
+
+async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: number, schema?: object, mode: 'survey' | 'deep' = 'survey'): Promise<any> {
   const { GoogleGenAI, MediaResolution } = await loadGenAI();
   const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || '').trim() });
   const data = fs.readFileSync(clipPath).toString('base64');
@@ -239,7 +247,7 @@ async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: 
         config: {
           temperature: 0.15, maxOutputTokens: maxTokens, responseMimeType: 'application/json',
           ...(schema ? { responseJsonSchema: schema } : {}),
-          ...(lowRes ? { mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW } : {}),
+          ...(mediaRes(MediaResolution, mode) ? { mediaResolution: mediaRes(MediaResolution, mode) } : {}),
         } as any,
         contents: [{ role: 'user', parts: [
           { inlineData: { data, mimeType: 'video/mp4' }, videoMetadata: { fps } } as any,
@@ -302,7 +310,9 @@ For each possession write the event chain in the exact order it happened, as a c
 
 positions_at_key_moment: one sentence on where the players were at the moment that decided the possession (e.g. "driver at the left elbow, two defenders collapse, big alone in the dunker spot, weak-side corner empty").
 
-Identify players by jersey number and, when visible or said by the commentators, by name. Commentary audio is a valid source.
+game_clock: the game clock shown on the broadcast graphic when the possession starts, e.g. "Q1 8:42" (empty if not visible). Read it from the score bug — it is the coach's reference.
+
+Identify players by jersey number and, when visible or said by the commentators, by name. Commentary audio is a valid source. Jersey numbers matter: look at the back/front of the jersey at the moment of the action, not at a guess from position.
 
 Skip replays (slow motion, replay graphics, a second angle of a moment already shown), timeouts, bench/crowd shots, and free throws unless something else happens.
 
@@ -322,7 +332,8 @@ async function surveyChunk(i: V2Input, s: number, len: number, duration: number,
     console.log(`   📋 ${mmss(s)}–${mmss(s + len)}: ${list.length} possessions (cached)`);
     return list;
   }
-  const clip = cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 700, dir);
+  let clip = cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 700, dir);
+  if (fs.statSync(clip).size > 13 * 1024 * 1024) { fs.rmSync(clip, { force: true }); clip = cutClip(i.videoPath, s, len, SURVEY_FPS, 480, 450, dir); }
   try {
     const json = await retry(() => gemini(clip, SURVEY_FPS, surveyPrompt(i, len), 16384, SURVEY_SCHEMA), `survey ${mmss(s)}`);
     const raw = Array.isArray(json?.possessions) ? json.possessions : [];
@@ -331,6 +342,7 @@ async function surveyChunk(i: V2Input, s: number, len: number, duration: number,
       offense: String(p.offense || '?'), transition: !!p.transition,
       chain: (Array.isArray(p.chain) ? p.chain : []).map((e: any) => ({ t: s + Number(e.t || 0), who: String(e.who || ''), what: String(e.what || ''), where: e.where ? String(e.where) : undefined })),
       positions_at_key_moment: p.positions_at_key_moment ? String(p.positions_at_key_moment) : undefined,
+      game_clock: p.game_clock ? String(p.game_clock) : undefined,
       outcome: String(p.outcome || ''), points: Number(p.points || 0),
       shot_location: p.shot_location, confidence: String(p.confidence || 'medium'),
       // a possession that starts inside the overlap tail belongs to the next chunk
@@ -419,16 +431,18 @@ YOUR TASK
    - type: from the focus team's point of view — "offense" if they had the ball, "defense" if the opponent did, "transition" for fast breaks either way. Without a focus team, use the team with the ball.
    - players: directly involved, as "#number name" when known.
    - corrected: true if the frames contradicted the log and you fixed it.
+   - start / end (optional, "mm:ss"): narrow the window when the logged possession is really two merged possessions or includes dead time — the clip the coach watches should contain exactly the sequence you describe.
 3. Write 3–5 insights across the whole video — patterns, not repeats of single plays. type "good" | "warn" | "bad".
 
 Return JSON only:
-{"game":"one-line Hebrew description of the video","plays":[{"id":3,"label":"","what_happened":"","positions":"","verdict":"good","lesson":"","type":"offense","players":["#55 Hartenstein"],"corrected":false}],"insights":[{"type":"good","title":"","body":""}]}
+{"game":"one-line Hebrew description of the video","plays":[{"id":3,"start":"00:39","end":"00:53","label":"","what_happened":"","positions":"","verdict":"good","lesson":"","type":"offense","players":["#55 Hartenstein"],"corrected":false}],"insights":[{"type":"good","title":"","body":""}]}
 
 POSSESSION LOG:`);
 
   let frames = 0;
   for (const p of log) {
-    content.push(`\n[#${p.id}] ${mmss(p.start)}–${mmss(p.end)} | offense: ${p.offense}${p.transition ? ' | transition' : ''} | ${p.points} pts | confidence ${p.confidence}
+    const dur = p.end - p.start;
+    content.push(`\n[#${p.id}] ${mmss(p.start)}–${mmss(p.end)}${p.game_clock ? ` (${p.game_clock})` : ''} | offense: ${p.offense}${p.transition ? ' | transition' : ''} | ${p.points} pts | confidence ${p.confidence}${dur > 28 ? ` | ⚠ ${Math.round(dur)}s — probably two possessions merged; describe ONE and narrow start/end` : ''}
 chain: ${p.chain.map(e => `${e.t.toFixed(1)}s ${e.who}: ${e.what}${e.where ? ` (${e.where})` : ''}`).join(' → ')}
 outcome: ${p.outcome}${p.positions_at_key_moment ? `\npositions: ${p.positions_at_key_moment}` : ''}`);
     const moments = keyMoments(p).slice(-perPoss);
@@ -462,7 +476,7 @@ ${p.chain.map(e => `- ${(e.t - start).toFixed(1)}s ${e.who}: ${e.what}`).join('\
 Outcome: ${p.outcome}
 
 Watch carefully and CORRECT the first pass wherever it is wrong. Return JSON only:
-{"what_i_saw":"literal sequence in order","key_moments":[{"t":3.5,"positions":"where every visible player is, who guards whom, who helps","decision":"..."}],"cause_chain":"how each event led to the next","what_worked":"...","what_could_be_better":"for both teams where relevant","players":["#55 Hartenstein"]}`, 4096, undefined, false), `deep ${mmss(p.start)}`);
+{"what_i_saw":"literal sequence in order","key_moments":[{"t":3.5,"positions":"where every visible player is, who guards whom, who helps","decision":"..."}],"cause_chain":"how each event led to the next","what_worked":"...","what_could_be_better":"for both teams where relevant","players":["#55 Hartenstein"]}`, 4096, undefined, 'deep'), `deep ${mmss(p.start)}`);
 
     const w = await retry(() => claude(COACH_SYSTEM, [`${teamsLine(i)}
 Frame-by-frame breakdown of one possession (${mmss(p.start)}–${mmss(p.end)}):
@@ -485,8 +499,13 @@ function toPlay(p: Possession, w: any, _d: any): V2Play {
     w.lesson ? `<br><b>${verdictTxt}:</b> ${esc(w.lesson)}` : '',
   ].join('');
   const type = ['offense', 'defense', 'transition'].includes(w.type) ? w.type : (p.transition ? 'transition' : 'offense');
+  const toSec = (v: any) => { const m = String(v || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
+  let st = toSec(w.start), en = toSec(w.end);
+  if (!(Number.isFinite(st) && st >= p.start - 2 && st <= p.end)) st = p.start;
+  if (!(Number.isFinite(en) && en > st && en <= p.end + 2)) en = p.end;
   return {
-    startTime: mmss(p.start), endTime: mmss(p.end), type,
+    startTime: mmss(st), endTime: mmss(en), type,
+    gameClock: p.game_clock,
     label: String(w.label || p.outcome).slice(0, 80), note,
     players: Array.isArray(w.players) ? w.players : [],
     verdict: ['good', 'bad', 'improve'].includes(w.verdict) ? w.verdict : undefined,
