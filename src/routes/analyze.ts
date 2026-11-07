@@ -58,7 +58,7 @@ async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
     let roster = '';
     try {
       const players = await Player.find().sort({ number: 1 });
-      roster = players.map((p) => `#${p.number} ${p.name}`).join(', ');
+      roster = [...new Set(players.map((p) => `#${p.number} ${p.name}`))].join(', ');
       console.log(`📋 Roster: ${roster || '(empty)'}`);
     } catch {
       console.warn('⚠️ Could not fetch roster');
@@ -74,7 +74,7 @@ async function processJob(jobId: string, input: AnalyzeInput): Promise<void> {
     const result = await runAnalysis(input, roster, makeProgress(), persistPath);
 
     if (fs.existsSync(persistPath)) {
-      const baseUrl = (process.env.BASE_URL || 'https://amirballbot-production.up.railway.app').replace(/\/+$/, '');
+      const baseUrl = (process.env.BASE_URL || (process.env.RAILWAY_ENVIRONMENT ? 'https://amirballbot-production.up.railway.app' : `http://localhost:${process.env.PORT || 3000}`)).replace(/\/+$/, '');
       result.videoUrl = `${baseUrl}/api/video/${jobId}.mp4`;
       console.log(`🎬 Video served at: ${result.videoUrl}`);
     }

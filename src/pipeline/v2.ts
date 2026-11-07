@@ -106,7 +106,8 @@ async function retry<T>(fn: () => Promise<T>, label: string): Promise<T> {
       const msg = String(err?.message || err);
       const transient = [429, 500, 503, 529].includes(err?.status) || /429|500|503|529|overloaded|high demand|RESOURCE_EXHAUSTED|UNAVAILABLE|JSON parse/i.test(msg);
       if (!transient || i >= delays.length) throw err;
-      const ms = delays[i] * 1000 * (0.8 + Math.random() * 0.4);
+      const hinted = Number((msg.match(/retry in ([\d.]+)s/i) || [])[1]);
+      const ms = Number.isFinite(hinted) && hinted > 0 ? (hinted + 2) * 1000 : delays[i] * 1000 * (0.8 + Math.random() * 0.4);
       console.log(`   ↻ ${label}: ${msg.slice(0, 80)} — retry in ${(ms / 1000).toFixed(0)}s`);
       await new Promise(r => setTimeout(r, ms));
     }
@@ -122,7 +123,19 @@ async function pool<T, R>(items: T[], n: number, fn: (x: T, i: number) => Promis
   return out;
 }
 
+// Free-tier Gemini allows ~5 requests/minute per model. Space every call out
+// (GEMINI_RPM in .env raises it on a paid plan) instead of hitting 429s.
+let nextSlot = 0;
+async function rateLimit(): Promise<void> {
+  const gap = 60000 / Math.max(1, Number(process.env.GEMINI_RPM || 5));
+  const now = Date.now();
+  const at = Math.max(now, nextSlot);
+  nextSlot = at + gap;
+  if (at > now) await new Promise(r => setTimeout(r, at - now));
+}
+
 async function gemini(clipPath: string, fps: number, prompt: string, maxTokens: number): Promise<any> {
+  await rateLimit();
   const { GoogleGenAI } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || '').trim() });
   const data = fs.readFileSync(clipPath).toString('base64');
