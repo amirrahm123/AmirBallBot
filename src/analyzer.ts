@@ -381,7 +381,7 @@ export async function analyzeFrames(frames: FrameWithTime[], context: string, fo
   console.log(`   📡 Calling Claude claude-sonnet-4-20250514 with ${frames.length} images...`);
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: contentBlocks }],
@@ -1241,7 +1241,7 @@ async function refineShotMechanicsWithHaiku(
     let refined: { refined_mechanic: string; reason: string; confidence: 'high' | 'medium' | 'low' } | null = null;
     try {
       const haikuResp = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: process.env.CLAUDE_FAST_MODEL || 'claude-haiku-5-5',
         max_tokens: 256,
         messages: [{
           role: 'user',
@@ -1445,7 +1445,7 @@ STRICTNESS REMINDER — a factor counts as "negative" only with CLEAR visual evi
 ` : '';
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
     max_tokens: 4096,
     messages: [{
       role: 'user',
@@ -1766,7 +1766,7 @@ async function generateInsightsFromPlays(
   const knowledgeContext = await getKnowledgeContext(teamName);
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
     max_tokens: 2048,
     messages: [{
       role: 'user',
@@ -1924,7 +1924,7 @@ async function findJerseyColors(
     const home = teamName || 'home team';
     const away = opponentName || 'opponent';
     const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: process.env.CLAUDE_FAST_MODEL || 'claude-haiku-5-5',
       max_tokens: 400,
       messages: [{
         role: 'user',
@@ -2058,7 +2058,7 @@ Examples of BAD observations (DO NOT generate these):
 
     try {
       const resp = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: process.env.CLAUDE_FAST_MODEL || 'claude-haiku-5-5',
         max_tokens: 512,
         messages: [{ role: 'user', content: prompt }],
       });

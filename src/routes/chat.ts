@@ -29,7 +29,7 @@ router.post('/', async (req: Request, res: Response) => {
     res.setHeader('Connection', 'keep-alive');
 
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
       max_tokens: 2048,
       system,
       messages: [{ role: 'user', content: message }],

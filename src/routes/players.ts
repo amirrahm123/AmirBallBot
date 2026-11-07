@@ -49,7 +49,7 @@ router.post('/parse-roster', async (req: Request, res: Response) => {
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
       max_tokens: 1000,
       messages: [{
         role: 'user',
@@ -99,7 +99,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const stats = player.seasonStats;
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
         max_tokens: 512,
         system: 'אתה אנליסט כדורסל ישראלי. תן תובנות קצרות על השחקן בעברית.',
         messages: [{
