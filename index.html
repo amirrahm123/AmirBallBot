@@ -1129,16 +1129,43 @@ function extractDriveId(url) {
   return m ? m[1] : null;
 }
 
-function seekVideo(seconds) {
+// Jump the analysis video to a play. With the server copy (<video>) it plays
+// exactly that possession and pauses at its end; YouTube just seeks.
+let playStopAt = null;
+function seekVideo(seconds, endSeconds) {
+  const container = document.getElementById('video-player-container');
+  if (container && !container.classList.contains('hidden')) {
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const v = document.getElementById('analysis-video');
+  if (v) {
+    playStopAt = endSeconds && endSeconds > seconds ? endSeconds + 1 : null;
+    const go = () => { v.currentTime = Math.max(0, seconds - 1); v.play().catch(() => {}); };
+    if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
+    return;
+  }
   if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
     ytPlayer.seekTo(seconds, true);
     ytPlayer.playVideo();
   }
 }
 
-function setupVideoPlayer() {
+function setupVideoPlayer(serverVideoUrl) {
   const container = document.getElementById('video-player-container');
   const wrapper = document.getElementById('video-player-wrapper');
+  // Prefer the server's own copy of the video: it's the only source we can
+  // seek reliably (Google Drive previews can't be controlled from the page).
+  if (serverVideoUrl) {
+    container.classList.remove('hidden');
+    wrapper.innerHTML = `<video id="analysis-video" src="${serverVideoUrl}" controls playsinline preload="metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;object-fit:contain"></video>`;
+    ytPlayer = null;
+    const v = document.getElementById('analysis-video');
+    v.addEventListener('timeupdate', () => {
+      if (playStopAt !== null && v.currentTime >= playStopAt) { v.pause(); playStopAt = null; }
+    });
+    v.addEventListener('error', () => { setupVideoPlayer(); }, { once: true });
+    return;
+  }
   if (!currentVideoUrl) { container.classList.add('hidden'); return; }
 
   const ytId = extractYouTubeId(currentVideoUrl);
@@ -1173,7 +1200,7 @@ function renderAnalysis(data) {
   document.getElementById('analysis-results').classList.remove('hidden');
 
   // Setup video player
-  setupVideoPlayer();
+  setupVideoPlayer(data.videoUrl);
 
   // Show verify bar with manual coach buttons
   const verifyBar = document.getElementById('verify-bar');
@@ -1216,6 +1243,7 @@ function renderAnalysis(data) {
     const typeLabel = p.type === 'Offense' || p.type === 'offense' ? 'התקפה' : p.type === 'Defense' || p.type === 'defense' ? 'הגנה' : 'מעבר';
     const timeDisplay = p.startTime && p.endTime ? `${p.startTime} - ${p.endTime}` : (p.time||'');
     const seekTime = parseTimeToSeconds(p.startTime || p.time);
+    const seekEnd = parseTimeToSeconds(p.endTime || '');
     // Coach correction buttons — only render for live jobs (currentJobId set
     // during polling). Saved analyses load via /api/analyses, no jobId, so
     // hide the row entirely instead of letting clicks silently 400.
@@ -1231,7 +1259,7 @@ function renderAnalysis(data) {
       </div>` : '';
     return `<div class="play-item" id="play-card-${i}" onclick="this.classList.toggle('expanded')" style="cursor:pointer">
       <div class="play-header">
-        <span class="play-time" onclick="event.stopPropagation();seekVideo(${seekTime})" style="cursor:pointer" title="דלג לזמן זה">${timeDisplay}</span>
+        <span class="play-time" onclick="event.stopPropagation();seekVideo(${seekTime}, ${seekEnd})" style="cursor:pointer;text-decoration:underline dotted" title="צפה במהלך בסרטון">${timeDisplay}</span>
         <span class="play-type ${typeClass}">${typeLabel}</span>
         <span class="play-label">${p.label||''}</span>
         <span class="play-players">${(p.players||[]).join(', ')}</span>
