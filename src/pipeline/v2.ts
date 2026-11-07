@@ -84,7 +84,7 @@ const MIN_PLAYS = 10;
 const MAX_PLAYS = 15;
 const CONCURRENCY = Number(process.env.GEMINI_CONCURRENCY || 3);
 const CACHE_DIR = process.env.SURVEY_CACHE_DIR || path.join(os.tmpdir(), 'hoopassist-survey-cache');
-const SURVEY_VERSION = 'v2.1'; // bump when the survey prompt/schema changes
+const SURVEY_VERSION = 'v2.2'; // bump when the survey prompt/schema changes
 
 const BIN_DIR = path.join(__dirname, '..', '..', 'bin');
 const FFMPEG = fs.existsSync(path.join(BIN_DIR, 'ffmpeg.exe')) ? path.join(BIN_DIR, 'ffmpeg.exe') : 'ffmpeg';
@@ -291,6 +291,12 @@ function surveyPrompt(i: V2Input, chunkLen: number): string {
 ${teamsLine(i)}
 ${i.roster ? `Focus-team roster (number – name):\n${i.roster}\n` : ''}
 Log EVERY possession of live game action in this clip: made shots, misses, turnovers, fouls, offensive rebounds that extend a possession. Completeness matters more than detail — an NBA clip this long normally contains ${Math.round(chunkLen / 15)}–${Math.round(chunkLen / 9)} possessions. Do not skip any.
+
+POSSESSION BOUNDARIES — follow strictly:
+- A possession ENDS and a new one STARTS at: a turnover (lost ball, steal, bad pass, offensive foul), a defensive rebound, a made basket, or a dead ball that changes possession. Even if the same team gets the ball right back, that is a NEW possession.
+- An offensive rebound (incl. a tip/deflection that stays with the offense) does NOT end the possession — log it as an event inside the same possession.
+- A possession is normally 4–24 seconds. If yours is longer than ~28s you have almost certainly merged two — split it.
+Example of the right split: "A grabs an offensive rebound, passes to B, B loses the ball while dribbling" = possession 1 (ends at the turnover). "Opponent misses, A deflects the rebound to C, C passes to B, B drives, big helps, B lobs to D for the dunk" = possession 2, starting at the opponent's shot.
 
 For each possession write the event chain in the exact order it happened, as a coach would rewind it. Be literal: a missed shot that is deflected on the rebound and lands with another player is three separate events (miss, deflection, recovery) — NOT a set play. Only name an action (pick and roll, handoff, post-up, off-ball screen…) if you actually see the screen / handoff / post entry.
 
